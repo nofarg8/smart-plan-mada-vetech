@@ -1,0 +1,284 @@
+// ייצוא התוצרים האישיים של המורה: קלנדר (.ics) ו-PDF (דרך הדפסה).
+// הכל בצד-לקוח, בלי שרת. הקלנדר מכיל את האירועים המתוארכים של התוכנית:
+// משימות מודל, אבני דרך חקר, מבחנים, יוזמות/תחרויות, וחופשות רשמיות.
+
+import html2pdf from 'html2pdf.js';
+import { initiatives, officialHolidays } from './data';
+import type { Plan, WeekSchedule } from './engine/plan';
+
+interface SessionLike {
+  teacherName: string;
+  teacherEmail: string;
+  school: { schoolName: string; semel: string; coordinatorEmail: string };
+}
+
+// כתובת ה-Web App של סקריפט המסירה (רץ בחשבון ההתיישבותי, יוצר תיקיות ושומר קבצים).
+const DELIVERY_URL =
+  'https://script.google.com/macros/s/AKfycbwXKEsH63qmCUO-ENbCk5kC_5rtKYRNcoDUjfdt4eHGlCjNnEdlsl0PzoBi6H9sQsQZ5Q/exec';
+
+/** תאריך ל-ICS בפורמט יום-שלם: YYYYMMDD. */
+function icsDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+/** הבא-יום, לצורך DTEND של אירוע יום-שלם. */
+function nextDay(d: Date): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + 1);
+  return r;
+}
+
+/** בריחה לטקסט ICS (פסיק, נקודה-פסיק, שורה חדשה). */
+function esc(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+/** קיפול שורה לפי RFC 5545: שורות מעל ~75 אוקטטים מתקפלות עם רווח בתחילת ההמשך. */
+function foldLine(line: string): string {
+  const enc = new TextEncoder();
+  let out = '';
+  let cur = '';
+  let curBytes = 0;
+  for (const ch of line) {
+    const chBytes = enc.encode(ch).length;
+    if (curBytes + chBytes > 73) {
+      out += (out ? '\r\n ' : '') + cur;
+      cur = ch;
+      curBytes = chBytes;
+    } else {
+      cur += ch;
+      curBytes += chBytes;
+    }
+  }
+  return out + (out ? '\r\n ' : '') + cur;
+}
+
+function parseDMY(s: string): Date | null {
+  const m = s.trim().match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+}
+function parseDMYY(s: string): Date | null {
+  const m = s.trim().match(/(\d{1,2})\.(\d{1,2})\.(\d{2})/);
+  return m ? new Date(2000 + +m[3], +m[2] - 1, +m[1]) : null;
+}
+/** YYYY-MM-DD מקומי -> Date מקומי (בלי הזזת יום). */
+function parseYmd(s: string): Date | null {
+  const m = s.trim().match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+}
+
+interface IcsEvent {
+  start: Date;
+  end: Date; // בלעדי (יום אחרי היום האחרון)
+  summary: string;
+  category: string;
+}
+
+/** בונה את רשימת אירועי הקלנדר מהתוכנית + הפריסה השבועית. */
+function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
+  const out: IcsEvent[] = [];
+
+  // מה ללמד בכל יום הוראה - אירוע לכל שיעור תוכן, בתאריך המדויק שלו.
+  for (const w of weekly) {
+    if (w.vacation) continue;
+    for (const sl of w.slots) {
+      if (sl.kind !== 'נושא' || !sl.dateISO) continue;
+      const topics = sl.topicList && sl.topicList.length ? sl.topicList.join(' · ') : sl.label;
+      if (!topics || topics === '-') continue;
+      const d = parseYmd(sl.dateISO);
+      if (d) out.push({ start: d, end: nextDay(d), summary: topics, category: 'נושא' });
+    }
+  }
+
+  // משימות מודל / חקר / מבחנים - מתוך הדד-ליינים המתוארכים.
+  for (const m of plan.deadlines) {
+    out.push({ start: m.date, end: nextDay(m.date), summary: m.label, category: m.kind });
+  }
+
+  // יוזמות ותחרויות STEM.
+  for (const ini of initiatives) {
+    const d = parseDMYY(ini.date);
+    if (d) out.push({ start: d, end: nextDay(d), summary: `יוזמה: ${ini.name}`, category: 'יוזמה' });
+  }
+
+  // חופשות וחגים רשמיים (טווח יום-שלם).
+  for (const h of officialHolidays) {
+    const s = parseDMY(h.start);
+    const e = parseDMY(h.end);
+    if (s && e) out.push({ start: s, end: nextDay(e), summary: `חופשה: ${h.name}`, category: 'חופשה' });
+  }
+
+  return out.sort((a, b) => a.start.getTime() - b.start.getTime());
+}
+
+/** מחזיר מחרוזת ICS מלאה לתוכנית של המורה. */
+export function buildICS(plan: Plan, session: SessionLike, weekly: WeekSchedule[], stamp: string): string {
+  const events = collectEvents(plan, weekly);
+  const gradeLabel = plan.grade === 7 ? 'כיתה ז׳' : 'כיתה ח׳';
+  const calName = `תוכנית עבודה - ${session.teacherName} - ${gradeLabel}`;
+  const lines: string[] = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//תומכת הוראה אישית//תוכנית עבודה שנתית//HE',
+    'CALSCALE:GREGORIAN',
+    `X-WR-CALNAME:${esc(calName)}`,
+  ];
+  events.forEach((ev, i) => {
+    lines.push(
+      'BEGIN:VEVENT',
+      `UID:${i}-${icsDate(ev.start)}-${plan.grade}@tomehet-horaa`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART;VALUE=DATE:${icsDate(ev.start)}`,
+      `DTEND;VALUE=DATE:${icsDate(ev.end)}`,
+      `SUMMARY:${esc(ev.summary)}`,
+      `CATEGORIES:${esc(ev.category)}`,
+      `DESCRIPTION:${esc(`${gradeLabel} · ${session.school.schoolName} · תשפ"ז`)}`,
+      'END:VEVENT',
+    );
+  });
+  lines.push('END:VCALENDAR');
+  // ICS דורש CRLF בין השורות, ושורות ארוכות מקופלות לפי התקן.
+  return lines.map(foldLine).join('\r\n');
+}
+
+/** אירועי התוכנית כרשימה פשוטה (תאריכים מקומיים + קטגוריה לצבע) - לבניית יומן משותף ב-Apps Script. */
+export function planEvents(plan: Plan, weekly: WeekSchedule[]): { start: string; end: string; title: string; category: string }[] {
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return collectEvents(plan, weekly).map((e) => ({ start: fmt(e.start), end: fmt(e.end), title: e.summary, category: e.category }));
+}
+
+/** מוריד Blob בשם נתון. */
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** מוריד קובץ טקסט בשם נתון. */
+function downloadText(content: string, filename: string, mime: string): void {
+  downloadBlob(new Blob([content], { type: mime }), filename);
+}
+
+/** ממיר base64 ל-Blob (להורדת ה-PDF שנוצר, בלי לייצר אותו פעמיים). */
+function base64ToBlob(b64: string, mime: string): Blob {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+/** מוריד את הקלנדר של המורה כקובץ .ics. */
+export function downloadICS(plan: Plan, session: SessionLike, weekly: WeekSchedule[]): void {
+  const stamp = icsDate(new Date()) + 'T000000Z';
+  const ics = buildICS(plan, session, weekly, stamp);
+  const grade = plan.grade === 7 ? 'ז' : 'ח';
+  downloadText(ics, `תוכנית עבודה - ${session.teacherName} - כיתה ${grade}.ics`, 'text/calendar;charset=utf-8');
+}
+
+/**
+ * מוריד את קובץ הקלנדר, ופותח את מסך הייבוא של גוגל קלנדר בטאב חדש.
+ * הערה: גוגל לא מאפשרת לאתר לייבא אוטומטית ליומן (אבטחה) - המורה עדיין
+ * בוחרת את הקובץ ולוחצת "ייבוא". זה מוביל אותה ישר למסך הנכון.
+ */
+export function exportToGoogleCalendar(plan: Plan, session: SessionLike, weekly: WeekSchedule[]): void {
+  downloadICS(plan, session, weekly);
+  window.open('https://calendar.google.com/calendar/u/0/r/settings/import', '_blank', 'noopener');
+}
+
+/** מפעיל הדפסה - המשתמש שומר כ-PDF. עיצוב ההדפסה ב-index.css (@media print). */
+export function printPlan(): void {
+  window.print();
+}
+
+/** מייצר PDF מאלמנט הדף ומחזיר base64 (בלי הקידומת data:). */
+async function generatePdfBase64(element: HTMLElement): Promise<string> {
+  const opt = {
+    margin: 6,
+    image: { type: 'jpeg' as const, quality: 0.85 },
+    html2canvas: { scale: 1.4, useCORS: true, backgroundColor: '#ffffff', windowWidth: element.scrollWidth },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
+    pagebreak: { mode: ['css', 'legacy'] },
+  };
+  const dataUri = await html2pdf().set(opt).from(element).outputPdf('datauristring');
+  const i = dataUri.indexOf('base64,');
+  return i >= 0 ? dataUri.slice(i + 7) : dataUri;
+}
+
+export interface DeliverResult {
+  ok: boolean;
+  folderUrl?: string;
+  error?: string;
+  unverified?: boolean;
+  calendarShared?: boolean;
+}
+
+/** נתוני חריגה שנרשמים לגיליון הדיווחים הפנימי (חריגה מהסטטוס / משעות משרד החינוך). */
+export interface DeviationInfo {
+  gradeLabel: string;
+  statusHours: number | null; // ש"ש לפי הסטטוס
+  actualHours: number; // ש"ש שהמורה הזינה בפועל
+  hoursDeviates: boolean; // האם ההזנה שונה מהסטטוס
+  moeFullHours: number; // סך שעות התוכן לפי משרד החינוך
+  capacityHours: number; // סך שעות התוכן שהמורה יכולה ללמד בפועל
+  shortfallHours: number; // הפער מול משרד החינוך
+  droppedTopics: string[]; // נושאים שהמורה בחרה לצמצם
+}
+
+/** שולח את התוצרים לסקריפט המסירה (חשבון ההתיישבותי): תיקייה + PDF + יומן משותף + מיילים + דיווח חריגות. */
+async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string, icsContent: string, events: { start: string; end: string; title: string; category?: string }[], deviation?: DeviationInfo): Promise<DeliverResult> {
+  const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const payload = {
+    action: 'deliverPlan',
+    schoolId: session.school.semel,
+    schoolName: session.school.schoolName,
+    teacherName: session.teacherName,
+    teacherEmail: session.teacherEmail,
+    coordinatorEmail: session.school.coordinatorEmail,
+    calendarName: `תוכנית עבודה מדע וטכנולוגיה - ${session.teacherName} - כיתה ${grade}`,
+    pdfBase64,
+    icsContent,
+    events,
+    deviation,
+  };
+  try {
+    // Content-Type text/plain כדי להימנע מ-preflight מול Apps Script (כמו בסטטוס).
+    const res = await fetch(DELIVERY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+    const data = await res.json();
+    return data && data.ok
+      ? { ok: true, folderUrl: data.folderUrl, calendarShared: !!data.calendar && !data.calendarError }
+      : { ok: false, error: (data && data.error) || 'שגיאה לא ידועה' };
+  } catch {
+    // הבקשה אולי נשלחה בהצלחה גם אם הדפדפן חסם את קריאת התשובה - לא מכריזים כישלון ודאי.
+    return { ok: true, unverified: true };
+  }
+}
+
+/**
+ * סיום והפקה בלחיצה אחת:
+ *  - מוריד למורה את הגאנט (PDF).
+ *  - שולח להתיישבותי: מתייק PDF+קלנדר בתיקיית בית הספר, יוצר/מעדכן יומן ומשתף
+ *    אותו עם המורה (מופיע לבד בגוגל קלנדר, בלי ייבוא ידני), ושולח עותק לרכז/ת.
+ * `element` = אלמנט הדף (במצב exporting) שממנו מפיקים את ה-PDF.
+ */
+export async function finalizePlan(plan: Plan, session: SessionLike, weekly: WeekSchedule[], element: HTMLElement, deviation?: DeviationInfo): Promise<DeliverResult> {
+  const stamp = icsDate(new Date()) + 'T000000Z';
+  const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const icsContent = buildICS(plan, session, weekly, stamp);
+  const events = planEvents(plan, weekly);
+  const pdfBase64 = await generatePdfBase64(element);
+  downloadBlob(base64ToBlob(pdfBase64, 'application/pdf'), `גאנט אישי - ${session.teacherName} - כיתה ${grade}.pdf`);
+  return postDelivery(plan, session, pdfBase64, icsContent, events, deviation);
+}
