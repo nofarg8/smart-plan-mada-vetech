@@ -17,6 +17,11 @@ export interface EngineInput {
    * הנושאים האלה יורדים מהפריסה - הגאנט האישי נבנה בלעדיהם.
    */
   droppedTopics?: string[];
+  /**
+   * סדר הנושאים שהמורה קבעה (כיתה ט' - "בחרי וסדרי"). כשמסופק, הנושאים נפרסים
+   * לפי הסדר הזה במקום סדר המפרט. נושאים שלא ברשימה נשמרים בסוף, בסדר המקורי.
+   */
+  topicOrder?: string[];
 }
 
 export interface ScheduledTopic {
@@ -157,7 +162,7 @@ function weekByNumber(n: number): GanttWeek | undefined {
 }
 
 /** פריסת נושאי החובה על השבועות עם תאריכים. */
-function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<string>): {
+function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<string>, topicOrder?: string[]): {
   scheduled: ScheduledTopic[];
   overflowHours: number;
   plannedHours: number;
@@ -165,7 +170,12 @@ function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<str
 } {
   const weeks = teachingWeeks();
   // נושאי התוכן שנכנסים לפריסה: כל הנושאים פחות אלה שהמורה בחרה לצמצם (מנגנון 8.2).
-  const activeTopics = bank.topics.filter((t) => !dropped.has(t.name));
+  let activeTopics = bank.topics.filter((t) => !dropped.has(t.name));
+  // כיתה ט': סדר הנושאים לפי בחירת המורה (topicOrder). נושאים מחוץ לרשימה נשמרים בסוף.
+  if (topicOrder && topicOrder.length) {
+    const idx = new Map(topicOrder.map((n, i) => [n, i]));
+    activeTopics = [...activeTopics].sort((a, b) => (idx.get(a.name) ?? 9999) - (idx.get(b.name) ?? 9999));
+  }
   // קצב הוראה = סך שעות התוכן / סכום מקדמי השבועות. פורסים על *כל* שבועות השנה,
   // בלי מכסה - כך כל הנושאים נכנסים לתוכנית. במחסור שעות הקצב עולה מעל שעות המורה
   // (דחיסה פרופורציונלית: כל נושא מקבל פחות זמן), במקום להשמיט את הנושאים האחרונים.
@@ -301,7 +311,7 @@ export function buildPlan(input: EngineInput): Plan {
   const bank = banks[input.grade];
   const weeklyContent = Math.max(1, input.weeklyHours - 1); // שעת ה-+1 לחקר/מודל
   const dropped = new Set(input.droppedTopics ?? []);
-  const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(bank, weeklyContent, dropped);
+  const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(bank, weeklyContent, dropped, input.topicOrder);
   const mtasks = scheduleModelTasks(modelTasksByGrade[input.grade], scheduled);
   const research = researchTrack();
 

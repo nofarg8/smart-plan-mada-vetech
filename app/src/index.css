@@ -886,6 +886,43 @@ body {
 }
 .se-cancel { font: 600 12.5px 'Rubik'; color: var(--muted); background: none; border: none; cursor: pointer; }
 
+/* ===== כיתה ט': בחירת נושאים וסידור ===== */
+.g9-panel {
+  background: var(--teal-tint); border: 1.5px solid var(--teal-tint-2);
+  border-radius: 14px; padding: 16px 18px; margin-bottom: 16px;
+}
+.g9-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.g9-title { font: 700 16px 'Rubik'; color: var(--teal); }
+.g9-hours { font: 700 13px 'Rubik'; color: var(--teal-2); background: #fff; padding: 4px 12px; border-radius: 999px; }
+.g9-sub { font: 400 13px/1.55 'Rubik'; color: var(--muted); margin: 4px 0 14px; }
+.g9-list { display: flex; flex-direction: column; gap: 8px; }
+.g9-row {
+  display: flex; align-items: center; gap: 12px; padding: 9px 12px;
+  background: #fff; border: 1px solid var(--card-border); border-radius: 10px;
+}
+.g9-row.off { background: #f4f1ea; border-color: var(--card-border-2); }
+.g9-row.off .g9-name { text-decoration: line-through; color: var(--muted-2); }
+.g9-move { display: flex; flex-direction: column; gap: 2px; }
+.g9-arrow {
+  font: 700 10px 'Rubik'; color: var(--teal); background: var(--teal-tint);
+  border: 1px solid var(--teal-tint-2); border-radius: 6px; width: 26px; height: 20px; cursor: pointer; line-height: 1;
+}
+.g9-arrow:hover:not(:disabled) { background: var(--teal-tint-2); }
+.g9-arrow:disabled { opacity: 0.3; cursor: default; }
+.g9-check input { width: 18px; height: 18px; accent-color: var(--teal); cursor: pointer; }
+.g9-body { flex: 1; min-width: 0; }
+.g9-name { font: 600 14px 'Rubik'; color: var(--heading-2); }
+.g9-meta { display: flex; gap: 10px; margin-top: 2px; }
+.g9-domain { font: 600 11.5px 'Rubik'; color: var(--teal-2); }
+.g9-h { font: 500 11.5px 'Rubik'; color: var(--muted); }
+.g9-note {
+  display: flex; align-items: center; gap: 9px; margin-bottom: 20px;
+  font: 500 13.5px/1.5 'Rubik'; color: var(--teal);
+  background: var(--teal-tint); border: 1px solid var(--teal-tint-2);
+  border-radius: 10px; padding: 11px 15px;
+}
+.g9-note svg { flex: 0 0 auto; }
+
 /* ===== כניסת רכז/ת ===== */
 .coord-link {
   display: block; width: 100%; margin-top: 12px;

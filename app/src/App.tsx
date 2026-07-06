@@ -36,6 +36,8 @@ interface SavedState {
   customEvents?: CustomEvent[];
   /** שיעורים שהמורה ערכה ידנית: תאריך ISO -> הטקסט שלה, לכל שכבה. */
   overridesByGrade?: Partial<Record<Grade, Record<string, string>>>;
+  /** סדר הנושאים שהמורה קבעה (כיתה ט' - "בחרי וסדרי"), לכל שכבה. */
+  topicOrderByGrade?: Partial<Record<Grade, string[]>>;
   /** השלב בשאלון (1 פרטי בית הספר, 2 מערכת שעות, 3 התוכנית). */
   step?: number;
 }
@@ -58,7 +60,8 @@ function writeSavedState(s: SavedState | null): void {
   }
 }
 
-const GRADE_LABEL: Record<Grade, string> = { 7: 'כיתה ז׳', 8: 'כיתה ח׳' };
+const GRADE_LABEL: Record<Grade, string> = { 7: 'כיתה ז׳', 8: 'כיתה ח׳', 9: 'כיתה ט׳' };
+const GRADES: Grade[] = [7, 8, 9];
 const WEEK_DAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳'];
 /** ברירת מחדל לשעות ההוראה בשבוע (כשאין ש"ש בסטטוס). */
 const DEFAULT_SCHEDULE: Record<string, number> = { 'ב׳': 2, 'ג׳': 1, 'ה׳': 2 };
@@ -122,7 +125,7 @@ function Header({ grade, onGrade, session, onFinalize, working, onLogout, showFi
         <span className="hd-meta">{session.teacherName} · {session.school.schoolName}</span>
         <button className="hd-logout" onClick={onLogout} title="יציאה והחלפת פרטים">יציאה</button>
         <div className="grade-toggle">
-          {([7, 8] as Grade[]).map((g) => (
+          {GRADES.map((g) => (
             <button key={g} className={`gt ${g === grade ? 'active' : ''}`} onClick={() => onGrade(g)}>
               {GRADE_LABEL[g]}
             </button>
@@ -622,6 +625,54 @@ function WeeklyPlan({ weeks, expandAll, school, onOverride }: {
   return <div className="weekly-plan">{rows}</div>;
 }
 
+/* ---------- כיתה ט': בחירת נושאים וסידור (אין מתווה חודשי כפוי) ---------- */
+function Grade9Panel({ order, dropped, onOrder, onToggle }: {
+  order: string[]; dropped: Set<string>;
+  onOrder: (names: string[]) => void; onToggle: (name: string) => void;
+}) {
+  const bank = banks[9];
+  const byName = new Map(bank.topics.map((t) => [t.name, t]));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= order.length) return;
+    const next = [...order];
+    [next[i], next[j]] = [next[j], next[i]];
+    onOrder(next);
+  };
+  const selectedHours = order.filter((n) => !dropped.has(n)).reduce((a, n) => a + (byName.get(n)?.hours ?? 0), 0);
+  return (
+    <div className="g9-panel">
+      <div className="g9-head">
+        <div className="g9-title">בחרי את הנושאים ואת הסדר</div>
+        <span className="g9-hours">נבחרו {selectedHours} שעות תוכן</span>
+      </div>
+      <p className="g9-sub">בכיתה ט' אין סדר לימוד קבוע - את בוחרת. סמני אילו נושאים תלמדי השנה, וסדרי אותם בסדר שנוח לך (למעלה = מוקדם יותר). המערכת תפרוס אותם על השנה עם החגים והחקר.</p>
+      <div className="g9-list">
+        {order.map((name, i) => {
+          const t = byName.get(name);
+          if (!t) return null;
+          const off = dropped.has(name);
+          return (
+            <div key={name} className={`g9-row ${off ? 'off' : ''}`}>
+              <div className="g9-move">
+                <button className="g9-arrow" onClick={() => move(i, -1)} disabled={i === 0 || off} title="הזיזי למעלה">▲</button>
+                <button className="g9-arrow" onClick={() => move(i, 1)} disabled={i === order.length - 1 || off} title="הזיזי למטה">▼</button>
+              </div>
+              <label className="g9-check">
+                <input type="checkbox" checked={!off} onChange={() => onToggle(name)} />
+              </label>
+              <div className="g9-body">
+                <div className="g9-name">{t.name}</div>
+                <div className="g9-meta"><span className="g9-domain">{t.domain}</span><span className="g9-h">{t.hours} ש'</span></div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- פס התקדמות (שאלון בשלושה שלבים) ---------- */
 const STEP_NAMES = ['פרטי בית הספר', 'מערכת השעות', 'התוכנית שלך'];
 function StepsBar({ step, maxStep, onStep }: { step: number; maxStep: number; onStep: (s: number) => void }) {
@@ -851,7 +902,13 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     appliedByGrade: { ...(saved?.appliedByGrade ?? {}) } as Partial<Record<Grade, string[]>>,
     classByGrade: { ...(saved?.classByGrade ?? {}) } as Partial<Record<Grade, string>>,
     overridesByGrade: { ...(saved?.overridesByGrade ?? {}) } as Partial<Record<Grade, Record<string, string>>>,
+    topicOrderByGrade: { ...(saved?.topicOrderByGrade ?? {}) } as Partial<Record<Grade, string[]>>,
   });
+  // סדר הנושאים שנבחר (כיתה ט' בלבד). ברירת מחדל: סדר המפרט, כל הנושאים.
+  const defaultOrder = (g: Grade) => banks[g].topics.map((t) => t.name);
+  const [topicOrder, setTopicOrder] = useState<string[]>(
+    () => stateRef.current.topicOrderByGrade[grade] ?? defaultOrder(grade),
+  );
   // השלב בשאלון: 1 פרטי בית הספר, 2 מערכת שעות ואירועים, 3 התוכנית המלאה.
   const [step, setStep] = useState<number>(saved?.step ?? 1);
   // שם הכיתה (רשות, למשל ז'1) - נכנס לכותרות, ל-PDF וליומן.
@@ -933,6 +990,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     setApplied(new Set(savedApplied));
     setKlass(stateRef.current.classByGrade[grade] ?? '');
     setOverrides(stateRef.current.overridesByGrade[grade] ?? {});
+    setTopicOrder(stateRef.current.topicOrderByGrade[grade] ?? defaultOrder(grade));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grade]);
 
@@ -944,13 +1002,15 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   const appliedKey = Array.from(applied).sort().join('|');
   const eventsKey = JSON.stringify(customEvents);
   const overridesKey = JSON.stringify(overrides);
+  const orderKey = topicOrder.join('|');
 
-  // שמירה אוטומטית: כל שינוי (שעות, צמצומים, אירועים, עריכות, שלב) נשמר בדפדפן.
+  // שמירה אוטומטית: כל שינוי (שעות, צמצומים, אירועים, עריכות, סדר, שלב) נשמר בדפדפן.
   useEffect(() => {
     stateRef.current.scheduleByGrade[grade] = schedule;
     stateRef.current.appliedByGrade[grade] = Array.from(applied);
     stateRef.current.classByGrade[grade] = klass;
     stateRef.current.overridesByGrade[grade] = overrides;
+    stateRef.current.topicOrderByGrade[grade] = topicOrder;
     writeSavedState({
       session,
       grade,
@@ -958,14 +1018,15 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       appliedByGrade: stateRef.current.appliedByGrade,
       classByGrade: stateRef.current.classByGrade,
       overridesByGrade: stateRef.current.overridesByGrade,
+      topicOrderByGrade: stateRef.current.topicOrderByGrade,
       customEvents,
       step,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, grade, scheduleKey, appliedKey, klass, eventsKey, overridesKey, step]);
+  }, [session, grade, scheduleKey, appliedKey, klass, eventsKey, overridesKey, orderKey, step]);
 
   const { plan, months, weekly } = useMemo(() => {
-    const p = buildPlan({ grade, weeklyHours, droppedTopics: Array.from(applied) });
+    const p = buildPlan({ grade, weeklyHours, droppedTopics: Array.from(applied), topicOrder: grade === 9 ? topicOrder : undefined });
     const rawWeekly = buildWeeklySchedule(p, slots, customEvents);
     // החלת עריכות ידניות: שיעור נושא שהמורה שינתה מקבל את הטקסט שלה.
     const weeklyEdited = rawWeekly.map((w) => ({
@@ -982,7 +1043,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       weekly: weeklyEdited,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grade, weeklyHours, scheduleKey, appliedKey, eventsKey, overridesKey, ganttVersion]);
+  }, [grade, weeklyHours, scheduleKey, appliedKey, eventsKey, overridesKey, orderKey, ganttVersion]);
 
   const goStep = (s: number) => setStep(s);
   return (
@@ -1020,6 +1081,18 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
             <input className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)} placeholder="למשל: ז'1" />
             <span className="klass-hint">יופיע בכותרת ה-PDF וביומן - שימושי אם את מלמדת כמה כיתות באותה שכבה.</span>
           </div>
+          {grade === 9 && (
+            <Grade9Panel
+              order={topicOrder}
+              dropped={applied}
+              onOrder={setTopicOrder}
+              onToggle={(name) => {
+                const upd = (s: Set<string>) => { const n = new Set(s); if (n.has(name)) n.delete(name); else n.add(name); return n; };
+                setApplied(upd);
+                setPending(upd);
+              }}
+            />
+          )}
           <EventsPanel events={customEvents} onChange={setCustomEvents} />
           <div className="step-nav">
             <button className="ac-btn ghost" onClick={() => goStep(1)}>הקודם</button>
@@ -1058,7 +1131,13 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         </div>
       )}
 
-      <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} />
+      {grade !== 9 && <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} />}
+      {grade === 9 && (
+        <div className="g9-note">
+          <IconAlert color="#1c4e5e" />
+          <span>אלה הנושאים והסדר שבחרת בשלב הקודם. לשינוי - חזרי ל<b>"מערכת השעות"</b> בפס ההתקדמות למעלה.</span>
+        </div>
+      )}
 
       <div className="lbl">מבט שנתי - נושאים לפי חודשים</div>
       <div className="month-grid">
