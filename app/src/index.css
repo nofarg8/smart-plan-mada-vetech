@@ -173,7 +173,7 @@ body {
 /* ===========================================================
    מסך פתיחה / הזדהות
    =========================================================== */
-.login-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--page); zoom: 1.08; }
+.login-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--page); }
 .login-page .hd { border-bottom: 1px solid var(--card-border-2); }
 .login-body {
   flex: 1;
@@ -209,9 +209,7 @@ body {
 /* ===========================================================
    מסך התוצאה - לוח השנה החודשי
    =========================================================== */
-.result-page { max-width: 1340px; margin: 0 auto; padding: 28px 22px 64px; zoom: 1.08; }
-/* בזמן הפקת ה-PDF מבטלים את ההגדלה כדי שה-PDF יישאר בגודל הרגיל */
-.result-page.exporting { zoom: 1; }
+.result-page { max-width: 1340px; margin: 0 auto; padding: 28px 22px 64px; }
 
 .title-row {
   display: flex;
@@ -979,8 +977,6 @@ body {
   .month-grid { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 720px) {
-  /* במסך צר מבטלים את הגדלת ה-8% - הטקסטים ממילא נערמים */
-  .login-page, .result-page { zoom: 1; }
   .month-grid { grid-template-columns: repeat(2, 1fr); }
   .ptable .prow { grid-template-columns: 1.6fr 0.6fr 1fr; }
   .ptable .prow .col-hide { display: none; }
