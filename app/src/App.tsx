@@ -102,11 +102,19 @@ const IconCheck = () => (
 );
 
 /* ---------- כותרת מותג ---------- */
-function Brand() {
+function Brand({ onHome }: { onHome?: () => void }) {
   return (
     <div className="brand">
-      <img className="brand-logo" src="/favicon.png" alt="תומכת הוראה אישית" />
-      <div className="bname">תומכת הוראה אישית</div>
+      <button
+        type="button"
+        className={`brand-home ${onHome ? 'clickable' : ''}`}
+        onClick={onHome}
+        disabled={!onHome}
+        title={onHome ? 'חזרה למסך הראשי' : undefined}
+      >
+        <img className="brand-logo" src="/favicon.png" alt="תומכת הוראה אישית" />
+        <span className="bname">תומכת הוראה אישית</span>
+      </button>
       <div className="bsep" />
       <img src="/logo-misrad.png" alt="משרד החינוך" />
       <img src="/logo-mada.png" alt="מדע וטכנולוגיה" />
@@ -115,14 +123,16 @@ function Brand() {
 }
 
 /* ---------- כותרת מסך התוצאה ---------- */
-function Header({ grade, onGrade, session, onFinalize, working, onLogout, showFinalize }: {
-  grade: Grade; onGrade: (g: Grade) => void; session: Session; onFinalize: () => void; working: boolean; onLogout: () => void; showFinalize: boolean;
+function Header({ grade, onGrade, session, onFinalize, working, onLogout, showFinalize, onHome, onEditHours }: {
+  grade: Grade; onGrade: (g: Grade) => void; session: Session; onFinalize: () => void; working: boolean;
+  onLogout: () => void; showFinalize: boolean; onHome: () => void; onEditHours: () => void;
 }) {
   return (
     <div className="hd">
-      <Brand />
+      <Brand onHome={onHome} />
       <div className="hd-actions">
         <span className="hd-meta">{session.teacherName} · {session.school.schoolName}</span>
+        <button className="hd-hours" onClick={onEditHours} title="עדכון ימים ושעות ההוראה">עדכון שעות</button>
         <button className="hd-logout" onClick={onLogout} title="יציאה והחלפת פרטים">יציאה</button>
         <div className="grade-toggle">
           {GRADES.map((g) => (
@@ -1058,7 +1068,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   return (
     <>
     <div className="result-page" dir="rtl" ref={pageRef}>
-      <Header grade={grade} onGrade={changeGrade} session={session} onFinalize={() => setShowExport(true)} working={delivery.status === 'working'} onLogout={onLogout} showFinalize={step === 3} />
+      <Header grade={grade} onGrade={changeGrade} session={session} onFinalize={() => setShowExport(true)} working={delivery.status === 'working'} onLogout={onLogout} showFinalize={step === 3} onHome={() => goStep(1)} onEditHours={() => goStep(2)} />
 
       {delivery.status !== 'idle' && (
         <div className={`deliver-bar ${delivery.status}`}>

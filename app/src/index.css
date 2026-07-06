@@ -93,6 +93,13 @@ body {
 .brand { display: flex; align-items: center; gap: 13px; }
 .brand img { display: block; width: auto; height: 42px; }
 .brand .brand-logo { height: 46px; border-radius: 12px; }
+.brand-home {
+  display: inline-flex; align-items: center; gap: 13px;
+  background: none; border: none; padding: 4px; margin: -4px; border-radius: 12px; font: inherit;
+}
+.brand-home.clickable { cursor: pointer; }
+.brand-home.clickable:hover { background: var(--teal-tint); }
+.brand-home:disabled { cursor: default; }
 .bsep { width: 1px; height: 34px; background: var(--card-border); }
 .bname { font-weight: 600; font-size: 16px; color: var(--teal); letter-spacing: 0.2px; }
 .hd-meta { font: 500 14px 'Rubik'; color: var(--muted-2); }
@@ -785,6 +792,13 @@ body {
   padding: 6px 13px; cursor: pointer;
 }
 .hd-logout:hover { color: var(--error-2); border-color: var(--error-border); background: var(--error-tint); }
+.hd-hours {
+  font: 600 12.5px 'Rubik'; color: var(--teal); background: var(--teal-tint);
+  border: 1px solid var(--teal-tint-2); border-radius: 8px;
+  padding: 6px 13px; cursor: pointer;
+}
+.hd-hours:hover { background: var(--teal-tint-2); }
+.result-page.exporting .hd-hours { display: none !important; }
 
 /* לינק בתוך הודעת שגיאה (למשל קישור הסטטוס לרכז/ת) */
 .err-link { color: var(--error-2); font-weight: 700; text-decoration: underline; }

@@ -59,10 +59,10 @@ export interface Plan {
   /** פער השעות: כמה שעות תוכן חסרות כדי ללמד את כל מה שנבחר. 0 = הכול נכנס. */
   shortfallHours: number;
   /**
-   * כיתה ט' בלבד: מספרי השבועות (לפני יריד החקר) שמוקדשים לעבודת החקר במקום חומר חדש.
-   * בשבועות אלה כל השיעורים מסומנים כ"חקר", והמנוע דוחס את התוכן לשאר השנה.
+   * כיתה ט' בלבד: שבועות שמוקדשים לפעילות (חקר לפני היריד / הגשת תוצרי תחרויות לפני חודש STEM),
+   * עם התווית שתוצג. בשבועות אלה לא מלמדים חומר חדש; המנוע דוחס את התוכן לשאר השנה.
    */
-  researchLessonWeeks: number[];
+  reservedWeeks: { week: number; label: string }[];
 }
 
 /** תא חודש בלוח השנה החודשי (מסך התוצאה). כל הנתונים נגזרים מהמנוע + הגאנט הרשמי. */
@@ -312,31 +312,45 @@ function researchTrack(): Milestone[] {
   return out;
 }
 
-/** מספר השבוע שבו נופל תאריך נתון (בתוך שבועות הלימוד), או null. */
-function weekOfDate(target: Date): number | null {
+/** שבוע הלימוד הראשון שמתחיל בתאריך הנתון או אחריו (עמיד לתאריכים שנופלים בחופשה). */
+function firstTeachingWeekFrom(target: Date): number {
   for (const w of teachingWeeks()) {
     const s = weekStart(w);
-    const e = weekEnd(w);
-    if (s && e && target >= s && target <= e) return w.week;
+    if (s && weekFactor(w) > 0 && s >= target) return w.week;
   }
-  return null;
+  return 9999;
+}
+
+/** צובר שבועות לאחור מ-anchorWeek (לא כולל) עד שמגיעים לתקציב-שעות, בלי שבועות תפוסים. */
+function accumulateWeeksBack(anchorWeek: number, weeklyContent: number, budget: number, taken: Set<number>): number[] {
+  const before = teachingWeeks().filter((w) => weekFactor(w) > 0 && w.week < anchorWeek && !taken.has(w.week));
+  const out: number[] = [];
+  let acc = 0;
+  for (let i = before.length - 1; i >= 0 && acc < budget; i--) {
+    out.push(before[i].week);
+    acc += weeklyContent * weekFactor(before[i]);
+  }
+  return out;
 }
 
 /**
- * כיתה ט' בלבד: השבועות שלפני יריד החקר המחוזי (16.3) שמוקדשים לעבודת החקר.
- * צוברים לאחור מהיריד עד ~15 שעות (המכסה שאינה משויכת לנושא תוכן).
+ * כיתה ט' בלבד: 15 השעות שאינן משויכות לנושא תוכן (140-125) מוקדשות לפעילות:
+ *  - בלוק STEM: השבוע(ות) שלפני חודש ה-STEM (ינואר) - הכנה והגשת תוצרי תחרויות.
+ *  - בלוק חקר: השבועות שלפני יריד החקר המחוזי (16.3) - עבודה על עבודת החקר.
+ * בשבועות אלה לא מלמדים חומר חדש; המנוע דוחס את התוכן לשאר השנה.
  */
-function reservedResearchWeeks(weeklyContent: number): number[] {
-  const RESEARCH_BUDGET = 15;
-  const fairWeek = weekOfDate(new Date(2027, 2, 16)) ?? 9999; // 16.3.27 - יריד מחוזי
-  const before = teachingWeeks().filter((w) => weekFactor(w) > 0 && w.week < fairWeek);
-  const reserved: number[] = [];
-  let acc = 0;
-  for (let i = before.length - 1; i >= 0 && acc < RESEARCH_BUDGET; i--) {
-    reserved.push(before[i].week);
-    acc += weeklyContent * weekFactor(before[i]);
-  }
-  return reserved;
+function reservedActivityWeeks(weeklyContent: number): { week: number; label: string }[] {
+  const TOTAL_BUDGET = 15;
+  const stemBudget = Math.max(weeklyContent, 3); // ~שבוע אחד לתחרויות
+  const janWeek = firstTeachingWeekFrom(new Date(2027, 0, 1)); // שבוע הלימוד הראשון בינואר (חודש ה-STEM)
+  const fairWeek = firstTeachingWeekFrom(new Date(2027, 2, 16)); // 16.3.27 - יריד מחוזי
+  const stem = accumulateWeeksBack(janWeek, weeklyContent, stemBudget, new Set());
+  const stemHours = stem.reduce((a, wk) => a + weeklyContent * weekFactor(teachingWeeks().find((w) => w.week === wk)!), 0);
+  const research = accumulateWeeksBack(fairWeek, weeklyContent, TOTAL_BUDGET - stemHours, new Set(stem));
+  return [
+    ...stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM' })),
+    ...research.map((week) => ({ week, label: 'עבודה על עבודת החקר לקראת היריד' })),
+  ];
 }
 
 export function buildPlan(input: EngineInput): Plan {
@@ -345,9 +359,9 @@ export function buildPlan(input: EngineInput): Plan {
   // לכן כל השעות משמשות לתוכן (בלי הפחתת ה-+1, שאחרת תיצור כפל-ספירה של החקר).
   const weeklyContent = input.grade === 9 ? Math.max(1, input.weeklyHours) : Math.max(1, input.weeklyHours - 1);
   const dropped = new Set(input.droppedTopics ?? []);
-  // כיתה ט': שבועות החקר שלפני היריד (בהם לא מלמדים חומר חדש). ז'/ח' - אין (מסלול חקר רגיל).
-  const researchLessonWeeks = input.grade === 9 ? reservedResearchWeeks(weeklyContent) : [];
-  const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(bank, weeklyContent, dropped, input.topicOrder, new Set(researchLessonWeeks));
+  // כיתה ט': שבועות הפעילות (STEM לפני ינואר + חקר לפני היריד). ז'/ח' - אין (מסלול חקר רגיל).
+  const reservedWeeks = input.grade === 9 ? reservedActivityWeeks(weeklyContent) : [];
+  const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(bank, weeklyContent, dropped, input.topicOrder, new Set(reservedWeeks.map((r) => r.week)));
   const mtasks = scheduleModelTasks(modelTasksByGrade[input.grade], scheduled);
   const research = researchTrack();
 
@@ -378,7 +392,7 @@ export function buildPlan(input: EngineInput): Plan {
     capacityHours: Math.round(capacityHours),
     plannedCoreHours: Math.round(plannedHours),
     shortfallHours,
-    researchLessonWeeks,
+    reservedWeeks,
   };
 }
 
@@ -661,15 +675,16 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
       return e && date > e ? null : date;
     };
 
-    // כיתה ט': שבוע חקר שמור - כל השיעורים מוקדשים לעבודת החקר לקראת היריד (לא חומר חדש).
-    if ((plan.researchLessonWeeks ?? []).includes(w.week)) {
+    // כיתה ט': שבוע פעילות שמור - כל השיעורים מוקדשים לחקר/תחרויות (לא חומר חדש).
+    const reserved = (plan.reservedWeeks ?? []).find((r) => r.week === w.week);
+    if (reserved) {
       const resSlots: SlotAssignment[] = slots.map((sl) => {
         const sd = slotDate0(sl.day);
         const dateISO = sd ? isoDay(sd) : undefined;
         const hol = sd ? officialHolidayOn(sd) : null;
         return hol
           ? { day: sl.day, hours: sl.hours, label: hol, kind: 'חג' as const, dateISO }
-          : { day: sl.day, hours: sl.hours, label: 'עבודה על עבודת החקר לקראת היריד', kind: 'חקר' as const, dateISO };
+          : { day: sl.day, hours: sl.hours, label: reserved.label, kind: 'חקר' as const, dateISO };
       });
       return { ...base, vacation: false, slots: resSlots };
     }
