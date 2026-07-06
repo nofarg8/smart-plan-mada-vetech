@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { fetchLiveGantt, setLiveGantt, fetchSchool, banks, topicsByDomain, modelTasks, type SchoolStatus } from './data';
 import type { Grade } from './data';
-import { buildPlan, buildMonthlyCalendar, buildWeeklySchedule, type Plan, type WeekSchedule, type TeacherSlot } from './engine/plan';
-import { finalizePlan } from './export';
+import { buildPlan, buildMonthlyCalendar, buildWeeklySchedule, type Plan, type WeekSchedule, type TeacherSlot, type CustomEvent } from './engine/plan';
+import { finalizePlan, listSchoolPlans, type SchoolPlanFile } from './export';
 
 interface Session {
   teacherName: string;
@@ -30,6 +30,14 @@ interface SavedState {
   grade: Grade;
   scheduleByGrade: Partial<Record<Grade, Record<string, number>>>;
   appliedByGrade: Partial<Record<Grade, string[]>>;
+  /** שם הכיתה (למשל ז'1) לכל שכבה - לכותרות ה-PDF והיומן. */
+  classByGrade?: Partial<Record<Grade, string>>;
+  /** אירועי בית ספר שהמורה הוסיפה (טיול, שבוע מבחנים) - לכל בית הספר. */
+  customEvents?: CustomEvent[];
+  /** שיעורים שהמורה ערכה ידנית: תאריך ISO -> הטקסט שלה, לכל שכבה. */
+  overridesByGrade?: Partial<Record<Grade, Record<string, string>>>;
+  /** השלב בשאלון (1 פרטי בית הספר, 2 מערכת שעות, 3 התוכנית). */
+  step?: number;
 }
 function loadSavedState(): SavedState | null {
   try {
@@ -68,7 +76,7 @@ function scheduleFromHours(total?: number): Record<string, number> {
   return out;
 }
 const KIND_CLASS: Record<WeekSchedule['slots'][number]['kind'], string> = {
-  'נושא': 'topic', 'משימת מודל': 'task', 'חקר': 'research', 'מבחן': 'exam', 'חג': 'holiday',
+  'נושא': 'topic', 'משימת מודל': 'task', 'חקר': 'research', 'מבחן': 'exam', 'חג': 'holiday', 'אירוע': 'schoolevent',
 };
 
 /* ---------- אייקונים (inline SVG, לפי ה-handoff) ---------- */
@@ -94,17 +102,18 @@ const IconCheck = () => (
 function Brand() {
   return (
     <div className="brand">
+      <img className="brand-logo" src="/favicon.png" alt="תומכת הוראה אישית" />
+      <div className="bname">תומכת הוראה אישית</div>
+      <div className="bsep" />
       <img src="/logo-misrad.png" alt="משרד החינוך" />
       <img src="/logo-mada.png" alt="מדע וטכנולוגיה" />
-      <div className="bsep" />
-      <div className="bname">תומכת הוראה אישית</div>
     </div>
   );
 }
 
 /* ---------- כותרת מסך התוצאה ---------- */
-function Header({ grade, onGrade, session, onFinalize, working, onLogout }: {
-  grade: Grade; onGrade: (g: Grade) => void; session: Session; onFinalize: () => void; working: boolean; onLogout: () => void;
+function Header({ grade, onGrade, session, onFinalize, working, onLogout, showFinalize }: {
+  grade: Grade; onGrade: (g: Grade) => void; session: Session; onFinalize: () => void; working: boolean; onLogout: () => void; showFinalize: boolean;
 }) {
   return (
     <div className="hd">
@@ -119,9 +128,11 @@ function Header({ grade, onGrade, session, onFinalize, working, onLogout }: {
             </button>
           ))}
         </div>
-        <button className="btn btn-pr" style={{ padding: '13px 26px', fontSize: 14 }} onClick={onFinalize} disabled={working}>
-          {working ? 'מפיק...' : <><IconDownload />הורידי PDF וקבלי גוגל קלנדר</>}
-        </button>
+        {showFinalize && (
+          <button className="btn btn-pr" style={{ padding: '13px 26px', fontSize: 14 }} onClick={onFinalize} disabled={working}>
+            {working ? 'מפיקה...' : <><IconDownload />הורידי PDF וקבלי גוגל קלנדר</>}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -133,7 +144,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** קישור הסטטוס שהרכז/ת ממלאים - מוצג כשבית הספר עוד לא מופיע במערכת. */
 const STATUS_FORM_URL = 'https://nofarg8.github.io/STATUS-MADATECH/';
 
-function LoginScreen({ onEnter }: { onEnter: (s: Session) => void }) {
+function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCoord: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [semel, setSemel] = useState('');
@@ -245,10 +256,125 @@ function LoginScreen({ onEnter }: { onEnter: (s: Session) => void }) {
             {checking ? 'בודקת את פרטי בית הספר...' : 'המשך'}
           </button>
 
+          <button className="coord-link" onClick={onCoord}>
+            רכז/ת? לצפייה בתוכניות של צוות בית הספר
+          </button>
+
           {DEBUG_ENTRY && (
             <button className="debug-enter" onClick={enterDebug}>
               כניסת דיבאג - מחוברת לסטטוס שלי (יוסר לפני פרסום)
             </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- תצוגת רכז/ת: כל התוכניות של צוות בית הספר ---------- */
+function CoordinatorScreen({ onBack }: { onBack: () => void }) {
+  const [email, setEmail] = useState('');
+  const [semel, setSemel] = useState('');
+  const [error, setError] = useState<ReactNode>('');
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<{ school: string; files: SchoolPlanFile[] } | null>(null);
+
+  const enter = async () => {
+    if (loading) return;
+    setError('');
+    if (!semel.trim() || !email.trim()) {
+      setError('יש למלא אימייל וסמל מוסד.');
+      return;
+    }
+    if (!EMAIL_RE.test(email.trim())) {
+      setError('כתובת האימייל לא נראית תקינה - בדקי אותה שוב.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const school = await fetchSchool(semel);
+      if (!school) {
+        setError(
+          <span>
+            בית הספר עדיין לא מופיע במערכת. מלאי את הסטטוס:{' '}
+            <a className="err-link" href={STATUS_FORM_URL} target="_blank" rel="noopener noreferrer">לינק לסטטוס מו"ט תשפ"ז</a>
+          </span>,
+        );
+        return;
+      }
+      if (school.coordinatorEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+        setError('האימייל אינו תואם את אימייל הרכז/ת שבפרטי בית הספר.');
+        return;
+      }
+      const r = await listSchoolPlans(semel);
+      if (!r.ok) {
+        setError(r.error || 'לא הצלחנו לקרוא את התוכניות. נסי שוב.');
+        return;
+      }
+      setData({ school: school.schoolName, files: r.files ?? [] });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // קיבוץ הקבצים לפי שם המורה (שם הקובץ: "שם המורה - גאנט אישי.pdf" / "שם המורה - קלנדר.ics").
+  const byTeacher = new Map<string, SchoolPlanFile[]>();
+  for (const f of data?.files ?? []) {
+    const teacher = f.name.split(' - ')[0].trim() || f.name;
+    byTeacher.set(teacher, [...(byTeacher.get(teacher) ?? []), f]);
+  }
+
+  return (
+    <div className="login-page" dir="rtl">
+      <div className="hd"><Brand /></div>
+      <div className="login-body">
+        <div className={`login-card ${data ? 'wide' : ''}`}>
+          {!data ? (
+            <>
+              <h2>כניסת רכז/ת</h2>
+              <p className="login-sub">צפייה בכל תוכניות העבודה שמורות הצוות שלך הפיקו - במקום אחד.</p>
+              <div className="field">
+                <label className="flab">אימייל הרכז/ת (כפי שמופיע בפרטי בית הספר)</label>
+                <input className="inp" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" />
+              </div>
+              <div className="field">
+                <label className="flab">סמל מוסד</label>
+                <input className="inp" value={semel} onChange={(e) => setSemel(e.target.value)} placeholder="סמל בית הספר" />
+              </div>
+              {error && <div className="login-err"><IconAlert color="#c2603f" />{error}</div>}
+              <button className="btn btn-pr login-btn" onClick={enter} disabled={loading}>
+                {loading ? 'בודקת...' : 'כניסה'}
+              </button>
+              <button className="coord-link" onClick={onBack}>חזרה לכניסת מורה</button>
+            </>
+          ) : (
+            <>
+              <h2>התוכניות של {data.school}</h2>
+              {byTeacher.size === 0 ? (
+                <p className="login-sub">עדיין לא הופקו תוכניות בבית הספר שלך. ברגע שמורה תפיק תוכנית - היא תופיע כאן.</p>
+              ) : (
+                <>
+                  <p className="login-sub">{byTeacher.size === 1 ? 'מורה אחת הפיקה תוכנית' : `${byTeacher.size} מורות הפיקו תוכניות`} - לחצי לצפייה:</p>
+                  <div className="coord-list">
+                    {[...byTeacher.entries()].map(([teacher, files]) => (
+                      <div key={teacher} className="coord-teacher">
+                        <div className="ct-name">{teacher}</div>
+                        <div className="ct-files">
+                          {files.map((f) => (
+                            <a key={f.name} className="ct-file" href={f.url} target="_blank" rel="noopener noreferrer">
+                              {f.name.includes('גאנט') ? 'גאנט אישי (PDF)' : f.name.includes('קלנדר') ? 'קלנדר (ics)' : f.name}
+                              <span className="ct-date">עודכן {f.updated}</span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <button className="coord-link" onClick={() => setData(null)}>בדיקת בית ספר אחר</button>
+              <button className="coord-link" onClick={onBack}>חזרה לכניסת מורה</button>
+            </>
           )}
         </div>
       </div>
@@ -348,8 +474,14 @@ function isRegistered(keywords: string[], school: SchoolStatus): boolean {
   return keywords.some((k) => txt.includes(k.toLowerCase()));
 }
 
-function WeekRow({ week, expandAll, school }: { week: WeekSchedule; expandAll: boolean; school: SchoolStatus }) {
+function WeekRow({ week, expandAll, school, onOverride }: {
+  week: WeekSchedule; expandAll: boolean; school: SchoolStatus;
+  onOverride?: (dateISO: string, text: string | null) => void;
+}) {
   const short = week.factor === 0.5;
+  // עריכה ידנית של שיעור: איזה שיעור בעריכה כרגע + הטקסט.
+  const [editSlot, setEditSlot] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
   // אילו שיעורים פתחו את תתי-הנושא (ברירת מחדל: מצומצם).
   const [openSubs, setOpenSubs] = useState<Set<number>>(new Set());
   const toggleSubs = (i: number) =>
@@ -383,9 +515,9 @@ function WeekRow({ week, expandAll, school }: { week: WeekSchedule; expandAll: b
                 <div key={i} className={`slot ${KIND_CLASS[sl.kind]}`}>
                   <span className="slot-day">{sl.day} · {sl.hours} ש'</span>
                   <div className="slot-main">
-                    {sl.kind === 'חג' ? (
+                    {sl.kind === 'חג' || sl.kind === 'אירוע' ? (
                       <span className="slot-label">
-                        <span className="slot-kind">חג: </span>{sl.label}
+                        <span className="slot-kind">{sl.kind === 'חג' ? 'חג: ' : 'אירוע בית ספרי: '}</span>{sl.label}
                         <span className="slot-noclass">אין שיעור</span>
                       </span>
                     ) : (
@@ -394,9 +526,34 @@ function WeekRow({ week, expandAll, school }: { week: WeekSchedule; expandAll: b
                         {sl.label}
                         {sl.taskType && <span className="slot-tasktype">{sl.taskType}</span>}
                         {sl.isAssessment && <span className="slot-assess">אירוע הערכה</span>}
+                        {sl.overridden && <span className="slot-owned">שונה ידנית</span>}
                       </span>
                     )}
                     {sl.detail && <span className="slot-detail">{sl.detail}</span>}
+                    {/* עריכה ידנית: רק בשיעורי נושא (משימות המודל, החקר והמבחנים רשמיים ולא נערכים). */}
+                    {sl.kind === 'נושא' && sl.dateISO && onOverride && (
+                      editSlot === i ? (
+                        <span className="slot-editrow">
+                          <input
+                            className="inp slot-editinp"
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            placeholder="מה יילמד בשיעור הזה"
+                          />
+                          <button className="se-save" onClick={() => { onOverride(sl.dateISO!, editText); setEditSlot(null); }}>שמרי</button>
+                          <button className="se-cancel" onClick={() => setEditSlot(null)}>ביטול</button>
+                        </span>
+                      ) : (
+                        <span className="slot-editrow">
+                          <button className="slot-editbtn" onClick={() => { setEditSlot(i); setEditText(sl.overridden ? sl.label : ''); }}>
+                            {sl.overridden ? 'ערכי שוב' : 'ערכי שיעור'}
+                          </button>
+                          {sl.overridden && (
+                            <button className="slot-editbtn reset" onClick={() => onOverride(sl.dateISO!, null)}>שחזרי למקור</button>
+                          )}
+                        </span>
+                      )
+                    )}
                     {sl.subItems && sl.subItems.length > 0 && (
                       <>
                         <button
@@ -449,7 +606,10 @@ function WeekRow({ week, expandAll, school }: { week: WeekSchedule; expandAll: b
 }
 
 /* ---------- הפריסה השבועית האישית (מקובצת לפי חודש) ---------- */
-function WeeklyPlan({ weeks, expandAll, school }: { weeks: WeekSchedule[]; expandAll: boolean; school: SchoolStatus }) {
+function WeeklyPlan({ weeks, expandAll, school, onOverride }: {
+  weeks: WeekSchedule[]; expandAll: boolean; school: SchoolStatus;
+  onOverride?: (dateISO: string, text: string | null) => void;
+}) {
   const rows: ReactNode[] = [];
   let lastMonth = '';
   for (const w of weeks) {
@@ -457,9 +617,68 @@ function WeeklyPlan({ weeks, expandAll, school }: { weeks: WeekSchedule[]; expan
       lastMonth = w.month;
       rows.push(<div key={`m-${w.month}`} className="wk-month">{w.month}</div>);
     }
-    rows.push(<WeekRow key={w.week} week={w} expandAll={expandAll} school={school} />);
+    rows.push(<WeekRow key={w.week} week={w} expandAll={expandAll} school={school} onOverride={onOverride} />);
   }
   return <div className="weekly-plan">{rows}</div>;
+}
+
+/* ---------- פס התקדמות (שאלון בשלושה שלבים) ---------- */
+const STEP_NAMES = ['פרטי בית הספר', 'מערכת השעות', 'התוכנית שלך'];
+function StepsBar({ step, maxStep, onStep }: { step: number; maxStep: number; onStep: (s: number) => void }) {
+  return (
+    <div className="steps-bar">
+      <span className="steps-label">שלב {step} מתוך {STEP_NAMES.length}</span>
+      <div className="steps">
+        {STEP_NAMES.map((name, i) => {
+          const n = i + 1;
+          const cls = n === step ? 'now' : n <= maxStep ? 'done' : 'next';
+          return (
+            <button key={name} className={`step-chip ${cls}`} onClick={() => n <= maxStep && onStep(n)} disabled={n > maxStep}>
+              <span className="step-num">{n < step ? '✓' : n}</span>
+              {name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- אירועים של בית הספר (טיול, שבוע מבחנים...) ---------- */
+function EventsPanel({ events, onChange }: { events: CustomEvent[]; onChange: (evs: CustomEvent[]) => void }) {
+  const [name, setName] = useState('');
+  const [date, setDate] = useState('');
+  const add = () => {
+    if (!name.trim() || !date) return;
+    onChange([...events.filter((e) => e.date !== date), { date, name: name.trim() }]);
+    setName('');
+    setDate('');
+  };
+  const fmt = (iso: string) => {
+    const m = iso.match(/(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${+m[3]}.${+m[2]}.${m[1].slice(2)}` : iso;
+  };
+  return (
+    <div className="events-panel">
+      <div className="ep-title">אירועים של בית הספר שלך (לא חובה)</div>
+      <p className="ep-sub">טיול שנתי, שבוע מבחנים, יום שיא... הוסיפי תאריכים שבהם אין שיעור רגיל - התוכנית תסמן אותם ולא תשבץ בהם חומר לימוד.</p>
+      <div className="ep-form">
+        <input className="inp ep-date" type="date" min="2026-09-01" max="2027-06-20" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input className="inp ep-name" placeholder="שם האירוע (למשל: טיול שנתי)" value={name} onChange={(e) => setName(e.target.value)} />
+        <button className="btn btn-pr ep-add" onClick={add} disabled={!name.trim() || !date}>הוסיפי</button>
+      </div>
+      {events.length > 0 && (
+        <div className="ep-list">
+          {[...events].sort((a, b) => a.date.localeCompare(b.date)).map((ev) => (
+            <span key={ev.date} className="ep-item">
+              <b>{fmt(ev.date)}</b> {ev.name}
+              <button className="ep-del" onClick={() => onChange(events.filter((x) => x.date !== ev.date))} title="הסירי את האירוע">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ---------- התאמת התוכנית לשעות בפועל (מנגנון מחסור, סעיף 8.2) ---------- */
@@ -630,7 +849,24 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   const stateRef = useRef({
     scheduleByGrade: { ...(saved?.scheduleByGrade ?? {}) } as Partial<Record<Grade, Record<string, number>>>,
     appliedByGrade: { ...(saved?.appliedByGrade ?? {}) } as Partial<Record<Grade, string[]>>,
+    classByGrade: { ...(saved?.classByGrade ?? {}) } as Partial<Record<Grade, string>>,
+    overridesByGrade: { ...(saved?.overridesByGrade ?? {}) } as Partial<Record<Grade, Record<string, string>>>,
   });
+  // השלב בשאלון: 1 פרטי בית הספר, 2 מערכת שעות ואירועים, 3 התוכנית המלאה.
+  const [step, setStep] = useState<number>(saved?.step ?? 1);
+  // שם הכיתה (רשות, למשל ז'1) - נכנס לכותרות, ל-PDF וליומן.
+  const [klass, setKlass] = useState<string>(stateRef.current.classByGrade[grade] ?? '');
+  // אירועי בית ספר שהמורה הוסיפה - שיעור שנופל עליהם לא משובץ.
+  const [customEvents, setCustomEvents] = useState<CustomEvent[]>(saved?.customEvents ?? []);
+  // שיעורים שנערכו ידנית: תאריך ISO -> הטקסט של המורה.
+  const [overrides, setOverrides] = useState<Record<string, string>>(stateRef.current.overridesByGrade[grade] ?? {});
+  const setOverride = (dateISO: string, text: string | null) =>
+    setOverrides((o) => {
+      const n = { ...o };
+      if (text && text.trim()) n[dateISO] = text.trim();
+      else delete n[dateISO];
+      return n;
+    });
   const [schedule, setSchedule] = useState<Record<string, number>>(
     () => stateRef.current.scheduleByGrade[grade] ?? scheduleFromHours(statusHours),
   );
@@ -678,7 +914,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         shortfallHours: Math.max(0, moeFullHours - plan.capacityHours),
         droppedTopics: Array.from(applied),
       };
-      const r = await finalizePlan(plan, session, weekly, el, deviation);
+      const r = await finalizePlan(plan, session, weekly, el, deviation, klass);
       if (r.ok && r.calendarShared) setDelivery({ status: 'done', msg: 'התוכנית מוכנה! ה-PDF ירד למחשב, ושלחנו למייל שלך גם את ה-PDF וגם את קובץ היומן (אפשר לצרף אותו ליומן Google שלך בקלות). בנוסף נוצר עבורך יומן משותף שיופיע בגוגל קלנדר (אשרי את השיתוף אם תתבקשי), ועותק נשלח לרכז/ת שלך.' });
       else if (r.ok) setDelivery({ status: 'done', msg: 'ה-PDF ירד למחשב, שלחנו אותו ואת קובץ היומן למייל שלך, ועותק נשלח לרכז/ת שלך. (היומן המשותף עדיין לא הופעל - נשלים אותו.)' });
       else setDelivery({ status: 'error', msg: r.error || 'ההפקה נכשלה. נסי שוב.' });
@@ -695,6 +931,8 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     const savedApplied = stateRef.current.appliedByGrade[grade] ?? [];
     setPending(new Set(savedApplied));
     setApplied(new Set(savedApplied));
+    setKlass(stateRef.current.classByGrade[grade] ?? '');
+    setOverrides(stateRef.current.overridesByGrade[grade] ?? {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grade]);
 
@@ -704,53 +942,105 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   const weeklyHours = slots.reduce((a, s) => a + s.hours, 0) || 1;
   const scheduleKey = JSON.stringify(schedule);
   const appliedKey = Array.from(applied).sort().join('|');
+  const eventsKey = JSON.stringify(customEvents);
+  const overridesKey = JSON.stringify(overrides);
 
-  // שמירה אוטומטית: כל שינוי (שעות, צמצומים, שכבה) נשמר בדפדפן - רענון לא מאבד כלום.
+  // שמירה אוטומטית: כל שינוי (שעות, צמצומים, אירועים, עריכות, שלב) נשמר בדפדפן.
   useEffect(() => {
     stateRef.current.scheduleByGrade[grade] = schedule;
     stateRef.current.appliedByGrade[grade] = Array.from(applied);
+    stateRef.current.classByGrade[grade] = klass;
+    stateRef.current.overridesByGrade[grade] = overrides;
     writeSavedState({
       session,
       grade,
       scheduleByGrade: stateRef.current.scheduleByGrade,
       appliedByGrade: stateRef.current.appliedByGrade,
+      classByGrade: stateRef.current.classByGrade,
+      overridesByGrade: stateRef.current.overridesByGrade,
+      customEvents,
+      step,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, grade, scheduleKey, appliedKey]);
+  }, [session, grade, scheduleKey, appliedKey, klass, eventsKey, overridesKey, step]);
 
   const { plan, months, weekly } = useMemo(() => {
     const p = buildPlan({ grade, weeklyHours, droppedTopics: Array.from(applied) });
+    const rawWeekly = buildWeeklySchedule(p, slots, customEvents);
+    // החלת עריכות ידניות: שיעור נושא שהמורה שינתה מקבל את הטקסט שלה.
+    const weeklyEdited = rawWeekly.map((w) => ({
+      ...w,
+      slots: w.slots.map((sl) =>
+        sl.kind === 'נושא' && sl.dateISO && overrides[sl.dateISO]
+          ? { ...sl, label: overrides[sl.dateISO], topicList: undefined, subItems: undefined, overridden: true }
+          : sl,
+      ),
+    }));
     return {
       plan: p,
       months: buildMonthlyCalendar(p),
-      weekly: buildWeeklySchedule(p, slots),
+      weekly: weeklyEdited,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grade, weeklyHours, scheduleKey, appliedKey, ganttVersion]);
+  }, [grade, weeklyHours, scheduleKey, appliedKey, eventsKey, overridesKey, ganttVersion]);
 
+  const goStep = (s: number) => setStep(s);
   return (
     <>
     <div className="result-page" dir="rtl" ref={pageRef}>
-      <Header grade={grade} onGrade={onGrade} session={session} onFinalize={() => setShowExport(true)} working={delivery.status === 'working'} onLogout={onLogout} />
+      <Header grade={grade} onGrade={onGrade} session={session} onFinalize={() => setShowExport(true)} working={delivery.status === 'working'} onLogout={onLogout} showFinalize={step === 3} />
 
       {delivery.status !== 'idle' && (
         <div className={`deliver-bar ${delivery.status}`}>
-          <span>{delivery.status === 'working' ? 'מפיק את התוכנית ושולח... (כמה שניות)' : delivery.msg}</span>
+          <span>{delivery.status === 'working' ? 'מפיקה את התוכנית ושולחת... (כמה דקות)' : delivery.msg}</span>
           {delivery.status !== 'working' && <button className="deliver-x" onClick={() => setDelivery({ status: 'idle' })}>סגרי</button>}
         </div>
       )}
 
+      <StepsBar step={step} maxStep={3} onStep={goStep} />
+
+      {step === 1 && (
+        <div className="step-page">
+          <h2 className="step-h">שלום {session.teacherName}! אלה פרטי בית הספר שלך</h2>
+          <p className="step-sub">הפרטים מולאו על ידי הרכז/ת של {session.school.schoolName}. בדקי שהכול נכון, בחרי שכבה למעלה, והמשיכי.</p>
+          <SchoolInfo school={session.school} grade={grade} />
+          <div className="step-nav">
+            <button className="btn btn-pr" onClick={() => goStep(2)}>הבא - מערכת השעות שלך</button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && (
+        <div className="step-page">
+          <h2 className="step-h">מתי את מלמדת {GRADE_LABEL[grade]}?</h2>
+          <p className="step-sub">חלקי את השעות השבועיות לימים שלך - לפי זה תיבנה הפריסה האישית, שיעור אחר שיעור.</p>
+          <ScheduleEditor schedule={schedule} onChange={setDayHours} targetHours={statusHours} />
+          <div className="klass-field">
+            <label className="flab">שם הכיתה (לא חובה)</label>
+            <input className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)} placeholder="למשל: ז'1" />
+            <span className="klass-hint">יופיע בכותרת ה-PDF וביומן - שימושי אם את מלמדת כמה כיתות באותה שכבה.</span>
+          </div>
+          <EventsPanel events={customEvents} onChange={setCustomEvents} />
+          <div className="step-nav">
+            <button className="ac-btn ghost" onClick={() => goStep(1)}>הקודם</button>
+            <button className="btn btn-pr" onClick={() => goStep(3)}>הבא - התוכנית שלך</button>
+          </div>
+        </div>
+      )}
+
+      {step === 3 && (
+      <>
       <div className="finalize-hint">
         <IconDownload />
         <span>בסיום, בלחיצה על <b>"הורידי PDF וקבלי גוגל קלנדר"</b>: הגאנט יירד למחשב, ויישלח גם למייל שלך יחד עם קובץ היומן - שאותו אפשר לצרף בקלות ליומן Google שלך. בנוסף ייווצר עבורך יומן אישי שיופיע לבד בגוגל קלנדר, ועותק יישלח לרכז/ת שלך.</span>
       </div>
 
-      <div style={{ height: 24 }} />
+      <div style={{ height: 18 }} />
 
       <div className="title-row">
         <div>
           <h2>תוכנית עבודה שנתית · מדע וטכנולוגיה</h2>
-          <p className="sub">{GRADE_LABEL[grade]} · {plan.weeklyHours} ש"ש · {session.teacherName} · {session.school.schoolName} · תשפ"ז</p>
+          <p className="sub">{GRADE_LABEL[grade]}{klass.trim() ? ` (${klass.trim()})` : ''} · {plan.weeklyHours} ש"ש · {session.teacherName} · {session.school.schoolName} · תשפ"ז</p>
         </div>
         <div className="legend">
           {LEGEND.map((l) => (
@@ -768,8 +1058,6 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         </div>
       )}
 
-      <SchoolInfo school={session.school} grade={grade} />
-      <ScheduleEditor schedule={schedule} onChange={setDayHours} targetHours={statusHours} />
       <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} />
 
       <div className="lbl">מבט שנתי - נושאים לפי חודשים</div>
@@ -780,14 +1068,14 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       <div className="hero-row">
         <div>
           <div className="lbl lbl-hero">הפריסה השבועית האישית שלך - שיעור אחר שיעור</div>
-          <p className="hero-sub">לפי השעות שלך: כל שבוע מחולק לשיעורים שלך, עם הנושא ללמידה ומתי בדיוק עושים משימת מודל, חקר או מבחן.</p>
+          <p className="hero-sub">לפי השעות שלך: כל שבוע מחולק לשיעורים שלך, עם הנושא ללמידה ומתי בדיוק עושים משימת מודל, חקר או מבחן. אפשר גם לערוך כל שיעור ידנית.</p>
         </div>
         <button className="expand-all" onClick={() => setExpandAll((v) => !v)}>
           <span className="se-caret">{expandAll ? '−' : '+'}</span>
           {expandAll ? 'סגרי את כל תתי-הנושאים' : 'הרחיבי את כל תתי-הנושאים'}
         </button>
       </div>
-      <WeeklyPlan weeks={weekly} expandAll={expandAll} school={session.school} />
+      <WeeklyPlan weeks={weekly} expandAll={expandAll} school={session.school} onOverride={setOverride} />
 
       <div className="finish-cta">
         <div className="fc-text">
@@ -798,6 +1086,8 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
           <IconDownload />הורידי PDF וקבלי יומן Google
         </button>
       </div>
+      </>
+      )}
     </div>
 
     {showExport && (
@@ -859,6 +1149,8 @@ export default function App() {
   const [grade, setGrade] = useState<Grade>(saved?.grade ?? 7);
   const [ganttVersion, setGanttVersion] = useState(0);
   const [session, setSession] = useState<Session | null>(saved?.session ?? null);
+  // תצוגת רכז/ת (כניסה נפרדת ממסך הפתיחה).
+  const [coordView, setCoordView] = useState(false);
   // יציאה: ניקוי המצב השמור וחזרה למסך הפתיחה (למשל להחלפת מייל או מורה אחרת).
   const logout = () => {
     writeSavedState(null);
@@ -876,6 +1168,10 @@ export default function App() {
     return () => { alive = false; };
   }, []);
 
-  if (!session) return <LoginScreen onEnter={setSession} />;
+  if (!session) {
+    return coordView
+      ? <CoordinatorScreen onBack={() => setCoordView(false)} />
+      : <LoginScreen onEnter={setSession} onCoord={() => setCoordView(true)} />;
+  }
   return <ResultScreen grade={grade} onGrade={setGrade} ganttVersion={ganttVersion} session={session} saved={saved} onLogout={logout} />;
 }

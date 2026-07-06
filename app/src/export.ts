@@ -85,11 +85,19 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
   for (const w of weekly) {
     if (w.vacation) continue;
     for (const sl of w.slots) {
-      if (sl.kind !== 'נושא' || !sl.dateISO) continue;
-      const topics = sl.topicList && sl.topicList.length ? sl.topicList.join(' · ') : sl.label;
-      if (!topics || topics === '-') continue;
+      if (!sl.dateISO) continue;
       const d = parseYmd(sl.dateISO);
-      if (d) out.push({ start: d, end: nextDay(d), summary: topics, category: 'נושא' });
+      if (!d) continue;
+      // אירוע בית ספרי שהמורה הוסיפה - נכנס לקלנדר בשמו.
+      if (sl.kind === 'אירוע') {
+        out.push({ start: d, end: nextDay(d), summary: `אירוע בית ספרי: ${sl.label}`, category: 'אירוע' });
+        continue;
+      }
+      if (sl.kind !== 'נושא') continue;
+      // שיעור שנערך ידנית - הטקסט של המורה גובר.
+      const topics = sl.overridden ? sl.label : (sl.topicList && sl.topicList.length ? sl.topicList.join(' · ') : sl.label);
+      if (!topics || topics === '-') continue;
+      out.push({ start: d, end: nextDay(d), summary: topics, category: 'נושא' });
     }
   }
 
@@ -233,8 +241,9 @@ export interface DeviationInfo {
 }
 
 /** שולח את התוצרים לסקריפט המסירה (חשבון ההתיישבותי): תיקייה + PDF + יומן משותף + מיילים + דיווח חריגות. */
-async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string, icsContent: string, events: { start: string; end: string; title: string; category?: string }[], deviation?: DeviationInfo): Promise<DeliverResult> {
+async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string, icsContent: string, events: { start: string; end: string; title: string; category?: string }[], deviation?: DeviationInfo, className?: string): Promise<DeliverResult> {
   const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const classLabel = (className ?? '').trim() ? ` (${(className ?? '').trim()})` : '';
   const payload = {
     action: 'deliverPlan',
     schoolId: session.school.semel,
@@ -242,7 +251,7 @@ async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string,
     teacherName: session.teacherName,
     teacherEmail: session.teacherEmail,
     coordinatorEmail: session.school.coordinatorEmail,
-    calendarName: `תוכנית עבודה מדע וטכנולוגיה - ${session.teacherName} - כיתה ${grade}`,
+    calendarName: `תוכנית עבודה מדע וטכנולוגיה - ${session.teacherName} - כיתה ${grade}${classLabel}`,
     pdfBase64,
     icsContent,
     events,
@@ -273,12 +282,35 @@ async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string,
  *    אותו עם המורה (מופיע לבד בגוגל קלנדר, בלי ייבוא ידני), ושולח עותק לרכז/ת.
  * `element` = אלמנט הדף (במצב exporting) שממנו מפיקים את ה-PDF.
  */
-export async function finalizePlan(plan: Plan, session: SessionLike, weekly: WeekSchedule[], element: HTMLElement, deviation?: DeviationInfo): Promise<DeliverResult> {
+export async function finalizePlan(plan: Plan, session: SessionLike, weekly: WeekSchedule[], element: HTMLElement, deviation?: DeviationInfo, className?: string): Promise<DeliverResult> {
   const stamp = icsDate(new Date()) + 'T000000Z';
   const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const classLabel = (className ?? '').trim() ? ` ${(className ?? '').trim()}` : '';
   const icsContent = buildICS(plan, session, weekly, stamp);
   const events = planEvents(plan, weekly);
   const pdfBase64 = await generatePdfBase64(element);
-  downloadBlob(base64ToBlob(pdfBase64, 'application/pdf'), `גאנט אישי - ${session.teacherName} - כיתה ${grade}.pdf`);
-  return postDelivery(plan, session, pdfBase64, icsContent, events, deviation);
+  downloadBlob(base64ToBlob(pdfBase64, 'application/pdf'), `גאנט אישי - ${session.teacherName} - כיתה ${grade}${classLabel}.pdf`);
+  return postDelivery(plan, session, pdfBase64, icsContent, events, deviation, className);
+}
+
+/** רשומת תוכנית מתויקת של מורה - לתצוגת הרכז/ת. */
+export interface SchoolPlanFile {
+  name: string;
+  updated: string;
+  url: string;
+}
+
+/** שולף לרכז/ת את רשימת התוכניות המתויקות של בית הספר (דרך סקריפט המסירה). */
+export async function listSchoolPlans(semel: string): Promise<{ ok: boolean; school?: string; files?: SchoolPlanFile[]; error?: string }> {
+  try {
+    const res = await fetch(DELIVERY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'listPlans', semel }),
+      redirect: 'follow',
+    });
+    return await res.json();
+  } catch {
+    return { ok: false, error: 'לא הצלחנו לקרוא את הנתונים. נסי שוב בעוד רגע.' };
+  }
 }

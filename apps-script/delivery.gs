@@ -10,6 +10,8 @@
  *   4. שולח לרכז/ת עותק קלנדר במייל.
  *   5. רושם חריגות (מול הסטטוס / מול שעות משרד החינוך) לגיליון אחד בתיקיית האם.
  *
+ * תצוגת רכז/ת (action = 'listPlans'): מחזיר את רשימת התוצרים של בית הספר לפי סמל מוסד.
+ *
  * דורש להפעיל שירות מתקדם: בעורך Apps Script -> Services (+) -> "Google Calendar API" -> Add.
  * הרשאות: הקוד ניגש גם ל-Google Sheets. לפני פרסום גרסה חדשה יש להריץ פעם אחת את
  *   authorizeNow() בעורך, לאשר את מסך ההרשאות (כולל גיליונות), ורק אז לפרסם.
@@ -28,6 +30,9 @@ function doPost(e) {
     }
     if (String(payload.action || '') === 'deliverPlan') {
       return json_(deliverPlan_(payload));
+    }
+    if (String(payload.action || '') === 'listPlans') {
+      return json_(listPlans_(String(payload.semel || '')));
     }
     return json_({ ok: false, error: 'פעולה לא מוכרת' });
   } catch (err) {
@@ -305,6 +310,35 @@ function shareCalendar_(calendarId, email) {
   } catch (aclErr) {
     // כנראה כבר משותף, או שהשירות לא הופעל - לא חוסם.
   }
+}
+
+/**
+ * תצוגת רכז/ת: רשימת התוצרים המתויקים של בית הספר (לפי סמל מוסד).
+ * פותח שיתוף-בקישור (צפייה) לקבצים כדי שהרכז/ת תוכל לפתוח אותם.
+ */
+function listPlans_(semel) {
+  var s = String(semel).replace(/\D/g, '');
+  if (!s) return { ok: false, error: 'חסר סמל מוסד' };
+  var parent = DriveApp.getFolderById(DELIVERY_PARENT_ID);
+  var folders = parent.getFolders();
+  var out = [];
+  var schoolName = '';
+  while (folders.hasNext()) {
+    var f = folders.next();
+    if (f.getName().indexOf(s) < 0) continue; // תיקיות בית הספר: "שם - סמל"
+    schoolName = schoolName || f.getName().replace(new RegExp('\\s*-\\s*' + s + '\\s*$'), '');
+    var files = f.getFiles();
+    while (files.hasNext()) {
+      var file = files.next();
+      try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (shErr) {}
+      out.push({
+        name: file.getName(),
+        updated: Utilities.formatDate(file.getLastUpdated(), 'Asia/Jerusalem', 'dd/MM/yyyy HH:mm'),
+        url: file.getUrl()
+      });
+    }
+  }
+  return { ok: true, school: schoolName, files: out };
 }
 
 function getOrCreateSchoolFolder_(schoolName, schoolId) {

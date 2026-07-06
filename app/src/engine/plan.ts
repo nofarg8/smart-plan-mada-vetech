@@ -529,9 +529,11 @@ export interface TeacherSlot {
 export interface SlotAssignment {
   day: string;
   hours: number;
-  /** מה קורה בשיעור: שם הנושא / שם משימת המודל / אבן דרך חקר / מבחן / חג (אין שיעור). */
+  /** מה קורה בשיעור: שם הנושא / שם משימת המודל / אבן דרך חקר / מבחן / חג / אירוע בית ספרי (אין שיעור). */
   label: string;
-  kind: 'נושא' | 'משימת מודל' | 'חקר' | 'מבחן' | 'חג';
+  kind: 'נושא' | 'משימת מודל' | 'חקר' | 'מבחן' | 'חג' | 'אירוע';
+  /** השיעור נערך ידנית על ידי המורה (טקסט מותאם אישית). */
+  overridden?: boolean;
   /** למשימת מודל: סוג (לומדה/הערכה מסכמת...), פירוט, והאם אירוע הערכה. */
   taskType?: string;
   detail?: string;
@@ -566,12 +568,21 @@ export interface WeekSchedule {
   slots: SlotAssignment[];
 }
 
+/** אירוע בית ספרי שהמורה הוסיפה (טיול, שבוע מבחנים, יום שיא) - היום לא מקבל תוכן לימוד. */
+export interface CustomEvent {
+  /** תאריך ISO מקומי: YYYY-MM-DD. */
+  date: string;
+  name: string;
+}
+
 /**
  * בונה את הפריסה השבועית האישית: לכל שבוע לימוד, ממלא את משבצות ההוראה של המורה
  * בתוכן - נושאי הלימוד לפי סדר המפרט, ומשימות המודל/חקר/מבחנים בשיעורים המתאימים.
+ * `customEvents` - אירועי בית ספר שהמורה הוסיפה; שיעור שנופל עליהם מסומן ולא משובץ.
  */
-export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[]): WeekSchedule[] {
+export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], customEvents?: CustomEvent[]): WeekSchedule[] {
   const slots = teacherSlots.filter((s) => s.hours > 0);
+  const eventByDate = new Map<string, string>((customEvents ?? []).map((ev) => [ev.date, ev.name]));
   return teachingWeeks().map((w) => {
     const s = weekStart(w);
     const e = weekEnd(w);
@@ -629,13 +640,15 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[]): We
       const sd = slotDate(sl.day);
       const dateISO = sd ? isoDay(sd) : undefined;
       const hol = holidayOnDay(sl.day);
-      return hol
-        ? { day: sl.day, hours: sl.hours, label: hol, kind: 'חג' as const, dateISO }
-        : { day: sl.day, hours: sl.hours, label: '', kind: 'נושא' as const, dateISO };
+      if (hol) return { day: sl.day, hours: sl.hours, label: hol, kind: 'חג' as const, dateISO };
+      // אירוע בית ספרי שהמורה הוסיפה (טיול/שבוע מבחנים) - השיעור מסומן ולא משובץ בו תוכן.
+      const customEv = dateISO ? eventByDate.get(dateISO) : undefined;
+      if (customEv) return { day: sl.day, hours: sl.hours, label: customEv, kind: 'אירוע' as const, dateISO };
+      return { day: sl.day, hours: sl.hours, label: '', kind: 'נושא' as const, dateISO };
     });
 
-    // רק השיעורים שלא נפלו עליהם חג מקבלים תוכן/משימות.
-    const activeIdx = slotList.map((sl, i) => (sl.kind === 'חג' ? -1 : i)).filter((i) => i >= 0);
+    // רק השיעורים שלא נפלו עליהם חג או אירוע בית ספרי מקבלים תוכן/משימות.
+    const activeIdx = slotList.map((sl, i) => (sl.kind === 'חג' || sl.kind === 'אירוע' ? -1 : i)).filter((i) => i >= 0);
     const specialCount = Math.min(specials.length, activeIdx.length);
     const teachingSlots = Math.max(0, activeIdx.length - specialCount);
 
