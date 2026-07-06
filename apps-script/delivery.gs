@@ -52,7 +52,9 @@ function deliverPlan_(p) {
   if (!teacher) throw new Error('חסר שם המורה');
 
   var folder = getOrCreateSchoolFolder_(schoolName, schoolId);
-  var base = sanitize_(teacher);
+  var gradeLabel = String(p.gradeLabel || '').trim();
+  // כל שכבה נשמרת בקובץ נפרד - מורה שמלמדת ז+ח+ט מקבלת 3 זוגות קבצים.
+  var base = sanitize_(teacher + (gradeLabel ? ' - ' + gradeLabel : ''));
   var out = { ok: true, folderUrl: folder.getUrl(), files: {} };
 
   // דיווח חריגות (פנימי) לגיליון בתיקיית האם - קודם כול, כדי שיירשם מיד. לא חוסם.

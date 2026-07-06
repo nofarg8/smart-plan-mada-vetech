@@ -375,7 +375,7 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
                         <div className="ct-files">
                           {files.map((f) => (
                             <a key={f.name} className="ct-file" href={f.url} target="_blank" rel="noopener noreferrer">
-                              {f.name.includes('גאנט') ? 'גאנט אישי (PDF)' : f.name.includes('קלנדר') ? 'קלנדר (ics)' : f.name}
+                              {f.name.replace(/\.(pdf|ics)$/,'').split(' - ').slice(1).join(' - ') || f.name}
                               <span className="ct-date">עודכן {f.updated}</span>
                             </a>
                           ))}
