@@ -61,6 +61,7 @@ function writeSavedState(s: SavedState | null): void {
 }
 
 const GRADE_LABEL: Record<Grade, string> = { 7: 'כיתה ז׳', 8: 'כיתה ח׳', 9: 'כיתה ט׳' };
+const GRADE_LETTER: Record<Grade, string> = { 7: 'ז', 8: 'ח', 9: 'ט' };
 const GRADES: Grade[] = [7, 8, 9];
 const WEEK_DAYS = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳'];
 /** ברירת מחדל לשעות ההוראה בשבוע (כשאין ש"ש בסטטוס). */
@@ -1104,13 +1105,19 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       {step === 2 && (
         <div className="step-page">
           <h2 className="step-h">מתי את מלמדת {GRADE_LABEL[grade]}?</h2>
-          <p className="step-sub">חלקי את השעות השבועיות לימים שלך - לפי זה תיבנה הפריסה האישית, שיעור אחר שיעור.</p>
-          <ScheduleEditor schedule={schedule} onChange={setDayHours} targetHours={statusHours} />
+          <p className="step-sub">הלו"ז נבנה לכל כיתה בנפרד: בחרי את הכיתה, וחלקי את השעות השבועיות שלה לימים - לפי זה תיבנה הפריסה האישית, שיעור אחר שיעור.</p>
           <div className="klass-field">
-            <label className="flab">שם הכיתה (חובה)</label>
-            <input className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)} placeholder="למשל: ז'1" />
+            <label className="flab">לאיזו כיתה בונים עכשיו את הלו"ז? (חובה)</label>
+            <select className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)}>
+              <option value="">בחרי כיתה</option>
+              {[1, 2, 3, 4, 5].map((n) => {
+                const name = `${GRADE_LETTER[grade]}'${n}`;
+                return <option key={n} value={name}>{name}</option>;
+              })}
+            </select>
             <span className="klass-hint">כל כיתה מקבלת גאנט ויומן משלה. כניסה חוזרת לאותה כיתה מעדכנת אותה - לא יוצרת כפילות.</span>
           </div>
+          <ScheduleEditor schedule={schedule} onChange={setDayHours} targetHours={statusHours} />
           {grade === 9 && <Grade9OrderPanel order={topicOrder} onOrder={setTopicOrder} />}
           <EventsPanel events={customEvents} onChange={setCustomEvents} />
           {plan.shortfallHours > 0 && applied.size === 0 && (
