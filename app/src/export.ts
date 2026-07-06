@@ -93,6 +93,11 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
         out.push({ start: d, end: nextDay(d), summary: `אירוע בית ספרי: ${sl.label}`, category: 'אירוע' });
         continue;
       }
+      // שיעורי תחרויות STEM (ט') - נפרדים מהחקר.
+      if (sl.kind === 'תחרויות') {
+        out.push({ start: d, end: nextDay(d), summary: `תחרויות STEM: ${sl.label}`, category: 'יוזמה' });
+        continue;
+      }
       // שיעור חקר (כיתה ט', לקראת היריד) - נכנס לקלנדר כשעת חקר.
       if (sl.kind === 'חקר') {
         out.push({ start: d, end: nextDay(d), summary: `חקר: ${sl.label}`, category: 'חקר' });
@@ -130,7 +135,7 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
 /** מחזיר מחרוזת ICS מלאה לתוכנית של המורה. */
 export function buildICS(plan: Plan, session: SessionLike, weekly: WeekSchedule[], stamp: string): string {
   const events = collectEvents(plan, weekly);
-  const gradeLabel = plan.grade === 7 ? 'כיתה ז׳' : 'כיתה ח׳';
+  const gradeLabel = plan.grade === 7 ? 'כיתה ז׳' : plan.grade === 8 ? 'כיתה ח׳' : 'כיתה ט׳';
   const calName = `תוכנית עבודה - ${session.teacherName} - ${gradeLabel}`;
   const lines: string[] = [
     'BEGIN:VCALENDAR',
@@ -192,7 +197,7 @@ function base64ToBlob(b64: string, mime: string): Blob {
 export function downloadICS(plan: Plan, session: SessionLike, weekly: WeekSchedule[]): void {
   const stamp = icsDate(new Date()) + 'T000000Z';
   const ics = buildICS(plan, session, weekly, stamp);
-  const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const grade = plan.grade === 7 ? 'ז' : plan.grade === 8 ? 'ח' : 'ט';
   downloadText(ics, `תוכנית עבודה - ${session.teacherName} - כיתה ${grade}.ics`, 'text/calendar;charset=utf-8');
 }
 
@@ -257,7 +262,7 @@ export interface DeviationInfo {
 
 /** שולח את התוצרים לסקריפט המסירה (חשבון ההתיישבותי): תיקייה + PDF + יומן משותף + מיילים + דיווח חריגות. */
 async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string, icsContent: string, events: { start: string; end: string; title: string; category?: string }[], deviation?: DeviationInfo, className?: string): Promise<DeliverResult> {
-  const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const grade = plan.grade === 7 ? 'ז' : plan.grade === 8 ? 'ח' : 'ט';
   const classLabel = (className ?? '').trim() ? ` (${(className ?? '').trim()})` : '';
   const payload = {
     action: 'deliverPlan',
@@ -299,7 +304,7 @@ async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string,
  */
 export async function finalizePlan(plan: Plan, session: SessionLike, weekly: WeekSchedule[], element: HTMLElement, deviation?: DeviationInfo, className?: string): Promise<DeliverResult> {
   const stamp = icsDate(new Date()) + 'T000000Z';
-  const grade = plan.grade === 7 ? 'ז' : 'ח';
+  const grade = plan.grade === 7 ? 'ז' : plan.grade === 8 ? 'ח' : 'ט';
   const classLabel = (className ?? '').trim() ? ` ${(className ?? '').trim()}` : '';
   const icsContent = buildICS(plan, session, weekly, stamp);
   const events = planEvents(plan, weekly);

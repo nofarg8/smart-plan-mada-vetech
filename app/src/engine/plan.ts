@@ -62,7 +62,7 @@ export interface Plan {
    * כיתה ט' בלבד: שבועות שמוקדשים לפעילות (חקר לפני היריד / הגשת תוצרי תחרויות לפני חודש STEM),
    * עם התווית שתוצג. בשבועות אלה לא מלמדים חומר חדש; המנוע דוחס את התוכן לשאר השנה.
    */
-  reservedWeeks: { week: number; label: string }[];
+  reservedWeeks: { week: number; label: string; kind: 'חקר' | 'תחרויות' }[];
 }
 
 /** תא חודש בלוח השנה החודשי (מסך התוצאה). כל הנתונים נגזרים מהמנוע + הגאנט הרשמי. */
@@ -339,7 +339,7 @@ function accumulateWeeksBack(anchorWeek: number, weeklyContent: number, budget: 
  *  - בלוק חקר: השבועות שלפני יריד החקר המחוזי (16.3) - עבודה על עבודת החקר.
  * בשבועות אלה לא מלמדים חומר חדש; המנוע דוחס את התוכן לשאר השנה.
  */
-function reservedActivityWeeks(weeklyContent: number): { week: number; label: string }[] {
+function reservedActivityWeeks(weeklyContent: number): { week: number; label: string; kind: 'חקר' | 'תחרויות' }[] {
   const TOTAL_BUDGET = 15;
   const stemBudget = Math.max(weeklyContent, 3); // ~שבוע אחד לתחרויות
   const janWeek = firstTeachingWeekFrom(new Date(2027, 0, 1)); // שבוע הלימוד הראשון בינואר (חודש ה-STEM)
@@ -348,8 +348,8 @@ function reservedActivityWeeks(weeklyContent: number): { week: number; label: st
   const stemHours = stem.reduce((a, wk) => a + weeklyContent * weekFactor(teachingWeeks().find((w) => w.week === wk)!), 0);
   const research = accumulateWeeksBack(fairWeek, weeklyContent, TOTAL_BUDGET - stemHours, new Set(stem));
   return [
-    ...stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM' })),
-    ...research.map((week) => ({ week, label: 'עבודה על עבודת החקר לקראת היריד' })),
+    ...stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM', kind: 'תחרויות' as const })),
+    ...research.map((week) => ({ week, label: 'עבודה על עבודת החקר לקראת היריד', kind: 'חקר' as const })),
   ];
 }
 
@@ -592,7 +592,7 @@ export interface SlotAssignment {
   hours: number;
   /** מה קורה בשיעור: שם הנושא / שם משימת המודל / אבן דרך חקר / מבחן / חג / אירוע בית ספרי (אין שיעור). */
   label: string;
-  kind: 'נושא' | 'משימת מודל' | 'חקר' | 'מבחן' | 'חג' | 'אירוע';
+  kind: 'נושא' | 'משימת מודל' | 'חקר' | 'מבחן' | 'חג' | 'אירוע' | 'תחרויות';
   /** השיעור נערך ידנית על ידי המורה (טקסט מותאם אישית). */
   overridden?: boolean;
   /** למשימת מודל: סוג (לומדה/הערכה מסכמת...), פירוט, והאם אירוע הערכה. */
@@ -684,7 +684,7 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
         const hol = sd ? officialHolidayOn(sd) : null;
         return hol
           ? { day: sl.day, hours: sl.hours, label: hol, kind: 'חג' as const, dateISO }
-          : { day: sl.day, hours: sl.hours, label: reserved.label, kind: 'חקר' as const, dateISO };
+          : { day: sl.day, hours: sl.hours, label: reserved.label, kind: reserved.kind, dateISO };
       });
       return { ...base, vacation: false, slots: resSlots };
     }

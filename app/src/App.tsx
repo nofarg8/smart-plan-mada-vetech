@@ -79,7 +79,7 @@ function scheduleFromHours(total?: number): Record<string, number> {
   return out;
 }
 const KIND_CLASS: Record<WeekSchedule['slots'][number]['kind'], string> = {
-  'נושא': 'topic', 'משימת מודל': 'task', 'חקר': 'research', 'מבחן': 'exam', 'חג': 'holiday', 'אירוע': 'schoolevent',
+  'נושא': 'topic', 'משימת מודל': 'task', 'חקר': 'research', 'מבחן': 'exam', 'חג': 'holiday', 'אירוע': 'schoolevent', 'תחרויות': 'stemcomp',
 };
 
 /* ---------- אייקונים (inline SVG, לפי ה-handoff) ---------- */

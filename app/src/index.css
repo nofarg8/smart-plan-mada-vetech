@@ -878,6 +878,8 @@ body {
 /* שיעור שנופל על אירוע בית ספרי */
 .slot.schoolevent { border-inline-start-color: var(--mustard); background: var(--mustard-tint); }
 .slot.schoolevent .slot-kind { color: var(--mustard-text-2); }
+.slot.stemcomp { border-inline-start-color: #3066a6; background: #eaf1f9; }
+.slot.stemcomp .slot-kind { color: #3066a6; }
 
 /* ===== עריכה ידנית של שיעור ===== */
 .slot-owned {
