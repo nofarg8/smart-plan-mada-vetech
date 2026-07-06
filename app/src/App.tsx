@@ -40,6 +40,8 @@ interface SavedState {
   topicOrderByGrade?: Partial<Record<Grade, string[]>>;
   /** השלב בשאלון (1 פרטי בית הספר, 2 מערכת שעות, 3 התוכנית). */
   step?: number;
+  /** מצב פר-כיתה: מערכת שעות, צמצומים ועריכות של כל כיתה בנפרד. מפתח: "שכבה|כיתה". */
+  byClass?: Record<string, { schedule?: Record<string, number>; applied?: string[]; overrides?: Record<string, string> }>;
 }
 function loadSavedState(): SavedState | null {
   try {
@@ -754,22 +756,28 @@ function EventsPanel({ events, onChange }: { events: CustomEvent[]; onChange: (e
 // נפתח רק כשהתוכנית המלאה דורשת יותר שעות ממה שיש למורה השנה.
 // המורה בוחרת נושאים לצמצום, מד-התקדמות חי מראה כמה שעות פינתה,
 // והנושאים המסומנים יורדים בפועל מהגאנט האישי (buildPlan עם droppedTopics).
-function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onReset }: {
+function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onReset, openSignal, onClose }: {
   grade: Grade; plan: Plan; pending: Set<string>; applied: Set<string>;
   onToggle: (name: string) => void; onConfirm: () => void; onReset: () => void;
+  openSignal?: number; onClose?: () => void;
 }) {
   // אחרי אישור, החלק נסגר לגמרי ומוצג רק סרגל סיכום; "פתח לעריכה" מחזיר אותו.
   const [editing, setEditing] = useState(false);
+  // כפתור "עריכת הלו"ז" במסך התוכנית פותח את הפאנל - גם כשאין מחסור שעות.
+  useEffect(() => {
+    if (openSignal) setEditing(true);
+  }, [openSignal]);
   const bank = banks[grade];
   const fullCore = bank.topics.reduce((a, t) => a + t.hours, 0);
   const gap = Math.max(0, fullCore - plan.capacityHours);
-  if (gap === 0) return null; // אין מחסור - אין מה להתאים
+  // בלי מחסור, בלי צמצומים קיימים ובלי פתיחה יזומה - הפאנל לא מוצג.
+  if (gap === 0 && !openSignal && applied.size === 0) return null;
 
   // המד עוקב אחרי הבחירה (pending) - משוב מיידי בזמן הסימון.
   const freed = bank.topics.filter((t) => pending.has(t.name)).reduce((a, t) => a + t.hours, 0);
   const remaining = Math.max(0, gap - freed);
   const covered = remaining === 0;
-  const pct = Math.min(100, Math.round((Math.min(freed, gap) / gap) * 100));
+  const pct = gap > 0 ? Math.min(100, Math.round((Math.min(freed, gap) / gap) * 100)) : 100;
   // האם יש בחירה שטרם אושרה (שונה ממה שכבר הוחל על הגאנט).
   const dirty = pending.size !== applied.size || Array.from(pending).some((n) => !applied.has(n));
   const appliedHours = bank.topics.filter((t) => applied.has(t.name)).reduce((a, t) => a + t.hours, 0);
@@ -817,12 +825,18 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
     <div className={`adjust ${covered ? 'done' : ''}`}>
       <div className="adjust-head">
         <div className="adjust-title">
-          {covered ? 'מצוין - סגרת את הפער' : 'בואי נתאים את התוכנית לשעות שלך'}
+          {gap === 0 ? 'עריכת הלו"ז - בחירת נושאים' : covered ? 'מצוין - סגרת את הפער' : 'בואי נתאים את התוכנית לשעות שלך'}
         </div>
         <div className="adjust-intro">
-          בשעות שלך השנה אפשר ללמד {plan.capacityHours} שעות, והתוכנית המלאה לפי משרד החינוך היא {fullCore} שעות - פער של {gap} שעות.
-          <br />
-          אפשר לבחור נושאים לצמצם, והמערכת מסמנת לך אילו הכי מתאימים (נושאים עם הרבה חומר רשות והרחבה, שאינו חובה). לא חובה לצמצם: אם תשאירי את הכול, כל הנושאים ייכנסו לתוכנית - אבל כל נושא יקבל מעט פחות זמן ממה שכתוב בתוכנית הלימודים של משרד החינוך.
+          {gap === 0 ? (
+            <>יש לך מספיק שעות לכל התוכנית המלאה - לא חייבים לצמצם דבר. אם בכל זאת תרצי לוותר על נושאים, סמני אותם ולחצי אישור - הם יירדו מהגאנט ומהיומן.</>
+          ) : (
+            <>
+              בשעות שלך השנה אפשר ללמד {plan.capacityHours} שעות, והתוכנית המלאה לפי משרד החינוך היא {fullCore} שעות - פער של {gap} שעות.
+              <br />
+              אפשר לבחור נושאים לצמצם, והמערכת מסמנת לך אילו הכי מתאימים (נושאים עם הרבה חומר רשות והרחבה, שאינו חובה). לא חובה לצמצם: אם תשאירי את הכול, כל הנושאים ייכנסו לתוכנית - אבל כל נושא יקבל מעט פחות זמן ממה שכתוב בתוכנית הלימודים של משרד החינוך.
+            </>
+          )}
         </div>
       </div>
 
@@ -888,17 +902,21 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
       </div>
 
       <div className="adjust-foot">
-        <div className="adjust-meter">
-          <div className="am-track"><div className="am-fill" style={{ width: `${pct}%` }} /></div>
-          <div className="am-label">
-            {covered
-              ? <span className="am-done"><IconCheck /> סימנת {freed} שעות - הפער נסגר</span>
-              : <span>סימנת {freed} מתוך {gap} שעות - נותרו {remaining}</span>}
+        {gap > 0 && (
+          <div className="adjust-meter">
+            <div className="am-track"><div className="am-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="am-label">
+              {covered
+                ? <span className="am-done"><IconCheck /> סימנת {freed} שעות - הפער נסגר</span>
+                : <span>סימנת {freed} מתוך {gap} שעות - נותרו {remaining}</span>}
+            </div>
+            {(pending.size > 0 || applied.size > 0) && <button className="am-reset" onClick={onReset}>אפסי בחירה</button>}
           </div>
-          {(pending.size > 0 || applied.size > 0) && <button className="am-reset" onClick={onReset}>אפסי בחירה</button>}
-        </div>
+        )}
         <div className="af-line">
-          {covered
+          {gap === 0
+            ? 'סמני נושאים שאת רוצה להוריד מהלו"ז ולחצי אישור - או סגרי אם אין שינוי.'
+            : covered
             ? 'מצוין - כל הנושאים ייכנסו בזמן המלא, בלי דחיסה.'
             : `נותרו ${remaining} שעות של פער. אפשר לסמן עוד נושאים לצמצום, או ללחוץ אישור כך - וכל הנושאים יישארו בתוכנית, עם מעט פחות זמן לכל אחד.`}
         </div>
@@ -909,8 +927,10 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
               <span className="ac-hint">אחרי אישור החלק ייסגר ותישאר התוכנית המותאמת. תמיד אפשר לפתוח שוב.</span>
             </>
           ) : applied.size > 0 ? (
-            <button className="ac-btn ghost" onClick={() => setEditing(false)}>סיום - חזרה לתוכנית</button>
-          ) : null}
+            <button className="ac-btn ghost" onClick={() => { setEditing(false); onClose?.(); }}>סיום - חזרה לתוכנית</button>
+          ) : (
+            <button className="ac-btn ghost" onClick={() => { setEditing(false); onClose?.(); }}>סגירה - חזרה לתוכנית</button>
+          )}
         </div>
       </div>
     </div>
@@ -930,6 +950,8 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     classByGrade: { ...(saved?.classByGrade ?? {}) } as Partial<Record<Grade, string>>,
     overridesByGrade: { ...(saved?.overridesByGrade ?? {}) } as Partial<Record<Grade, Record<string, string>>>,
     topicOrderByGrade: { ...(saved?.topicOrderByGrade ?? {}) } as Partial<Record<Grade, string[]>>,
+    // מצב פר-כיתה: לכל כיתה (ז'1, ז'2...) מערכת שעות, צמצומים ועריכות משלה.
+    byClass: { ...(saved?.byClass ?? {}) } as Record<string, { schedule?: Record<string, number>; applied?: string[]; overrides?: Record<string, string> }>,
   });
   // סדר הנושאים שנבחר (כיתה ט' בלבד). ברירת מחדל: סדר המפרט, כל הנושאים.
   const defaultOrder = (g: Grade) => banks[g].topics.map((t) => t.name);
@@ -980,6 +1002,13 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   const [delivery, setDelivery] = useState<{ status: 'idle' | 'working' | 'done' | 'error'; msg?: string }>({ status: 'idle' });
   // חלון הייצוא הקופץ - נפתח מכפתור הסיום (בכותרת או בתחתית), ומרכז את פעולת ההפקה.
   const [showExport, setShowExport] = useState(false);
+  // פתיחת פאנל עריכת הלו"ז (צמצום/בחירת נושאים) מכפתור העריכה - מונה כדי שכל לחיצה תפתח.
+  const [adjustSignal, setAdjustSignal] = useState(0);
+  const adjustRef = useRef<HTMLDivElement>(null);
+  const openAdjust = () => {
+    setAdjustSignal((n) => n + 1);
+    setTimeout(() => adjustRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  };
   const doFinalize = async () => {
     const el = pageRef.current;
     if (!el || delivery.status === 'working') return;
@@ -1011,17 +1040,24 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     }
   };
 
-  // בשינוי שכבה - משחזרים את המצב השמור של השכבה (או ברירת מחדל מהש"ש בסטטוס).
+  // בשינוי שכבה - משחזרים את הכיתה האחרונה של השכבה ואת סדר הנושאים (ט').
   useEffect(() => {
-    setSchedule(stateRef.current.scheduleByGrade[grade] ?? scheduleFromHours(session.school.hoursByGrade?.[grade]));
-    const savedApplied = stateRef.current.appliedByGrade[grade] ?? [];
-    setPending(new Set(savedApplied));
-    setApplied(new Set(savedApplied));
     setKlass(stateRef.current.classByGrade[grade] ?? '');
-    setOverrides(stateRef.current.overridesByGrade[grade] ?? {});
     setTopicOrder(stateRef.current.topicOrderByGrade[grade] ?? defaultOrder(grade));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [grade]);
+
+  // כל כיתה = מצב משלה. בבחירת כיתה משחזרים את מה ששמור לה; כיתה חדשה מתחילה נקי
+  // (בלי צמצומים ועריכות של כיתה אחרת) - כך מחסור שעות יופיע ויוביל לצמצום כרגיל.
+  useEffect(() => {
+    const c = klass.trim() ? stateRef.current.byClass[`${grade}|${klass.trim()}`] : undefined;
+    setSchedule(c?.schedule ?? stateRef.current.scheduleByGrade[grade] ?? scheduleFromHours(session.school.hoursByGrade?.[grade]));
+    const savedApplied = c?.applied ?? [];
+    setPending(new Set(savedApplied));
+    setApplied(new Set(savedApplied));
+    setOverrides(c?.overrides ?? {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grade, klass]);
 
   const slots: TeacherSlot[] = WEEK_DAYS
     .filter((d) => (schedule[d] || 0) > 0)
@@ -1040,6 +1076,9 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     stateRef.current.classByGrade[grade] = klass;
     stateRef.current.overridesByGrade[grade] = overrides;
     stateRef.current.topicOrderByGrade[grade] = topicOrder;
+    if (klass.trim()) {
+      stateRef.current.byClass[`${grade}|${klass.trim()}`] = { schedule, applied: Array.from(applied), overrides };
+    }
     writeSavedState({
       session,
       grade,
@@ -1048,6 +1087,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       classByGrade: stateRef.current.classByGrade,
       overridesByGrade: stateRef.current.overridesByGrade,
       topicOrderByGrade: stateRef.current.topicOrderByGrade,
+      byClass: stateRef.current.byClass,
       customEvents,
       step,
     });
@@ -1158,8 +1198,8 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       </div>
 
       <div className="edit-plan-row">
-        <button className="edit-plan-btn" onClick={() => goStep(2)}>
-          ✎ עריכת התוכנית - שעות, כיתה, אירועים ונושאים
+        <button className="edit-plan-btn" onClick={openAdjust}>
+          ✎ עריכת הלו"ז - בחירת נושאים וצמצום
         </button>
       </div>
 
@@ -1172,7 +1212,9 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         </div>
       )}
 
-      <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} />
+      <div ref={adjustRef}>
+        <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} openSignal={adjustSignal} onClose={() => setAdjustSignal(0)} />
+      </div>
       {grade === 9 && (
         <div className="g9-note">
           <IconAlert color="#1c4e5e" />
