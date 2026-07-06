@@ -342,9 +342,11 @@ function accumulateWeeksBack(anchorWeek: number, weeklyContent: number, budget: 
 function reservedActivityWeeks(weeklyContent: number): { week: number; label: string; kind: 'חקר' | 'תחרויות' }[] {
   const TOTAL_BUDGET = 15;
   const stemBudget = Math.max(weeklyContent, 3); // ~שבוע אחד לתחרויות
-  const janWeek = firstTeachingWeekFrom(new Date(2027, 0, 1)); // שבוע הלימוד הראשון בינואר (חודש ה-STEM)
+  // תחרויות STEM (עין העדשה, חדרי בריחה): ההכנה וההגשה לפני המועד המחוזי (1.12),
+  // ורק אחר כך הגמר הארצי בינואר - כמו בחקר: קודם התיישבותי, אחר כך ארצי.
+  const stemWeek = firstTeachingWeekFrom(new Date(2026, 11, 1)); // 1.12.26 - הגשה מחוזית
   const fairWeek = firstTeachingWeekFrom(new Date(2027, 2, 16)); // 16.3.27 - יריד מחוזי
-  const stem = accumulateWeeksBack(janWeek, weeklyContent, stemBudget, new Set());
+  const stem = accumulateWeeksBack(stemWeek, weeklyContent, stemBudget, new Set());
   const stemHours = stem.reduce((a, wk) => a + weeklyContent * weekFactor(teachingWeeks().find((w) => w.week === wk)!), 0);
   // חקר: לפי לוח ההתיישבותי (הירוק בגאנט) העבודה מתחילה מוקדם - שבועות החקר נפרסים
   // מאמצע נובמבר ועד יריד ההתיישבותי (16.3), כשהשבוע האחרון צמוד ליריד. כך התלמידות

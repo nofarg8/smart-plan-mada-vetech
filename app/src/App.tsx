@@ -777,6 +777,11 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
   for (const mt of modelTasks[grade]) for (const n of mt.topicNames ?? []) modelLocked.add(n);
   // תהליך התכן ההנדסי (ז') - רובו חובה במפרט, לא מוצע לצמצום.
   if (grade === 7) modelLocked.add('תהליך התכן ההנדסי');
+  // נושאים גדולים שעיקרם חובה (הרבה שעות, מעט תתי-נושא רשות/הרחבה) - לא מועמדים לצמצום,
+  // בכל השכבות. נושא גדול עם הרבה חומר רשות (למשל הגנום בט') נשאר מועמד.
+  for (const t of bank.topics) {
+    if (t.hours >= 10 && (t.optional ?? []).length < 3) modelLocked.add(t.name);
+  }
   const domains = topicsByDomain(bank)
     .map((d) => ({ ...d, topics: d.topics.filter((t) => !modelLocked.has(t.name)) }))
     .filter((d) => d.topics.length > 0);
@@ -822,7 +827,9 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
 
       {domains.length > 0 && modelLocked.size > 0 && (
         <div className="adjust-note lock">
-          <b>שימי לב:</b> נושאים שעליהם נשענות משימות מודל אינם מוצגים כאן לצמצום, כדי לא לפגוע בלומדות ובמשימות המודל.
+          <b>שימי לב:</b> {grade === 9
+            ? 'נושאים גדולים שעיקרם חובה אינם מוצגים כאן לצמצום.'
+            : 'נושאים שעליהם נשענות משימות מודל, ונושאים גדולים שעיקרם חובה - אינם מוצגים כאן לצמצום.'}
         </div>
       )}
 
@@ -1141,6 +1148,12 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
             <span key={l.label}><span className="sq" style={{ background: l.color }} />{l.label}</span>
           ))}
         </div>
+      </div>
+
+      <div className="edit-plan-row">
+        <button className="edit-plan-btn" onClick={() => goStep(2)}>
+          ✎ עריכת התוכנית - שעות, כיתה, אירועים ונושאים
+        </button>
       </div>
 
       {plan.shortfallHours > 0 && applied.size === 0 && (

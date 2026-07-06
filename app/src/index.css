@@ -847,6 +847,16 @@ body {
 .step-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 26px; }
 .step-need { font: 600 13px 'Rubik'; color: var(--mustard-text); }
 
+/* כפתור עריכת התוכנית - תמיד נגיש במסך התוכנית */
+.edit-plan-row { margin: -4px 0 18px; }
+.edit-plan-btn {
+  font: 700 14px 'Rubik'; color: var(--teal); background: #fff;
+  border: 1.5px solid var(--input-border-filled); border-radius: 11px;
+  padding: 11px 22px; cursor: pointer;
+}
+.edit-plan-btn:hover { background: var(--teal-tint); }
+.result-page.exporting .edit-plan-row { display: none !important; }
+
 /* שדה שם הכיתה */
 .klass-field { margin: 4px 0 18px; display: flex; flex-direction: column; gap: 5px; }
 .klass-inp { max-width: 220px; }
