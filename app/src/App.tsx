@@ -224,8 +224,23 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
       );
       return;
     }
+    if (!school.coordinatorEmail.trim()) {
+      setError(
+        <span>
+          בפרטי בית הספר שלך חסר אימייל של הרכז/ת. בקשו מהרכז/ת למלא את סטטוס תשפ"ז:{' '}
+          <a className="err-link" href={STATUS_FORM_URL} target="_blank" rel="noopener noreferrer">לינק לסטטוס מו"ט תשפ"ז</a>
+        </span>,
+      );
+      return;
+    }
     if (school.coordinatorEmail.trim().toLowerCase() !== rakazEmail.trim().toLowerCase()) {
-      setError('אימייל הרכז/ת אינו תואם את פרטי בית הספר. בדקי מול הרכז/ת שלך.');
+      setError(
+        <span>
+          אימייל הרכז/ת שהזנת אינו תואם את פרטי בית הספר - בדקי את הכתובת מול הרכז/ת שלך.
+          אם פרטי הרכז/ת השתנו, בקשו מהרכז/ת לעדכן את סטטוס תשפ"ז:{' '}
+          <a className="err-link" href={STATUS_FORM_URL} target="_blank" rel="noopener noreferrer">לינק לסטטוס מו"ט תשפ"ז</a>
+        </span>,
+      );
       return;
     }
     onEnter({ teacherName: name.trim(), teacherEmail: email.trim(), school });
@@ -319,7 +334,12 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
         return;
       }
       if (school.coordinatorEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
-        setError('האימייל אינו תואם את אימייל הרכז/ת שבפרטי בית הספר.');
+        setError(
+          <span>
+            האימייל אינו תואם את אימייל הרכז/ת שבפרטי בית הספר. אם הפרטים השתנו - עדכני את סטטוס תשפ"ז:{' '}
+            <a className="err-link" href={STATUS_FORM_URL} target="_blank" rel="noopener noreferrer">לינק לסטטוס מו"ט תשפ"ז</a>
+          </span>,
+        );
         return;
       }
       const r = await listSchoolPlans(semel);
