@@ -346,7 +346,20 @@ function reservedActivityWeeks(weeklyContent: number): { week: number; label: st
   const fairWeek = firstTeachingWeekFrom(new Date(2027, 2, 16)); // 16.3.27 - יריד מחוזי
   const stem = accumulateWeeksBack(janWeek, weeklyContent, stemBudget, new Set());
   const stemHours = stem.reduce((a, wk) => a + weeklyContent * weekFactor(teachingWeeks().find((w) => w.week === wk)!), 0);
-  const research = accumulateWeeksBack(fairWeek, weeklyContent, TOTAL_BUDGET - stemHours, new Set(stem));
+  // חקר: לפי לוח ההתיישבותי (הירוק בגאנט) העבודה מתחילה מוקדם - שבועות החקר נפרסים
+  // מאמצע נובמבר ועד יריד ההתיישבותי (16.3), כשהשבוע האחרון צמוד ליריד. כך התלמידות
+  // מוכנות קודם למחוזי ורק אחר כך לארצי (1.6).
+  const novWeek = firstTeachingWeekFrom(new Date(2026, 10, 15)); // 15.11.26
+  const stemSet = new Set(stem);
+  const candidates = teachingWeeks().filter((w) => weekFactor(w) > 0 && w.week >= novWeek && w.week < fairWeek && !stemSet.has(w.week));
+  const researchBudget = TOTAL_BUDGET - stemHours;
+  const need = Math.max(1, Math.min(candidates.length, Math.ceil(researchBudget / Math.max(1, weeklyContent))));
+  const research: number[] = [];
+  for (let i = 0; i < need && candidates.length; i++) {
+    const idx = need === 1 ? candidates.length - 1 : Math.round((i * (candidates.length - 1)) / (need - 1));
+    const wk = candidates[idx].week;
+    if (!research.includes(wk)) research.push(wk);
+  }
   return [
     ...stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM', kind: 'תחרויות' as const })),
     ...research.map((week) => ({ week, label: 'עבודה על עבודת החקר לקראת היריד', kind: 'חקר' as const })),
@@ -595,6 +608,8 @@ export interface SlotAssignment {
   kind: 'נושא' | 'משימת מודל' | 'חקר' | 'מבחן' | 'חג' | 'אירוע' | 'תחרויות';
   /** השיעור נערך ידנית על ידי המורה (טקסט מותאם אישית). */
   overridden?: boolean;
+  /** שיעור קבוע (היכרות בתחילת השנה / סיכום בסופה) - לא נושא תוכן מהתוכנית. */
+  fixed?: boolean;
   /** למשימת מודל: סוג (לומדה/הערכה מסכמת...), פירוט, והאם אירוע הערכה. */
   taskType?: string;
   detail?: string;
@@ -644,6 +659,10 @@ export interface CustomEvent {
 export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], customEvents?: CustomEvent[]): WeekSchedule[] {
   const slots = teacherSlots.filter((s) => s.hours > 0);
   const eventByDate = new Map<string, string>((customEvents ?? []).map((ev) => [ev.date, ev.name]));
+  // השיעור הראשון בשנה = היכרות ופתיחה; האחרון = סיכום. קבועים, בלי תוכן מהתוכנית.
+  const activeW = teachingWeeks().filter((w) => weekFactor(w) > 0);
+  const firstWeekNum = activeW[0]?.week;
+  const lastWeekNum = activeW[activeW.length - 1]?.week;
   return teachingWeeks().map((w) => {
     const s = weekStart(w);
     const e = weekEnd(w);
@@ -731,8 +750,22 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
       return { day: sl.day, hours: sl.hours, label: '', kind: 'נושא' as const, dateISO };
     });
 
-    // רק השיעורים שלא נפלו עליהם חג או אירוע בית ספרי מקבלים תוכן/משימות.
-    const activeIdx = slotList.map((sl, i) => (sl.kind === 'חג' || sl.kind === 'אירוע' ? -1 : i)).filter((i) => i >= 0);
+    // שיעור היכרות (הראשון בשנה) ושיעור סיכום (האחרון בשנה) - קבועים, לא חלק מפריסת התוכן.
+    if (w.week === firstWeekNum) {
+      const fi = slotList.findIndex((sl) => sl.kind === 'נושא');
+      if (fi >= 0) slotList[fi] = { ...slotList[fi], label: 'שיעור היכרות ופתיחת שנה', fixed: true };
+    }
+    if (w.week === lastWeekNum) {
+      for (let fi = slotList.length - 1; fi >= 0; fi--) {
+        if (slotList[fi].kind === 'נושא' && !slotList[fi].fixed) {
+          slotList[fi] = { ...slotList[fi], label: 'שיעור סיכום שנה', fixed: true };
+          break;
+        }
+      }
+    }
+
+    // רק השיעורים שלא נפלו עליהם חג/אירוע ושאינם קבועים מקבלים תוכן/משימות.
+    const activeIdx = slotList.map((sl, i) => (sl.kind === 'חג' || sl.kind === 'אירוע' || sl.fixed ? -1 : i)).filter((i) => i >= 0);
     const specialCount = Math.min(specials.length, activeIdx.length);
     const teachingSlots = Math.max(0, activeIdx.length - specialCount);
 

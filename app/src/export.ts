@@ -235,8 +235,7 @@ async function generatePdfBase64(element: HTMLElement): Promise<string> {
         let css = '';
         for (const sheet of Array.from(document.styleSheets)) {
           try {
-            for (const rule of Array.from(sheet.cssRules)) css += rule.cssText + '
-';
+            for (const rule of Array.from(sheet.cssRules)) css += rule.cssText + '\n';
           } catch {
             /* גיליון חוצה-מקור (גופני Google) - נשאר דרך הקישור הרגיל */
           }

@@ -844,7 +844,8 @@ body {
 .step-page { max-width: 860px; margin: 0 auto; padding: 8px 0 40px; }
 .step-h { font: 700 24px 'Rubik'; color: var(--heading); margin-bottom: 6px; }
 .step-sub { font: 400 14.5px/1.6 'Rubik'; color: var(--muted); margin-bottom: 20px; }
-.step-nav { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+.step-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 26px; }
+.step-need { font: 600 13px 'Rubik'; color: var(--mustard-text); }
 
 /* שדה שם הכיתה */
 .klass-field { margin: 4px 0 18px; display: flex; flex-direction: column; gap: 5px; }

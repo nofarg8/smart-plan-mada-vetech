@@ -775,6 +775,8 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
   // נושאים שעליהם נשענות משימות מודל - לא מוצגים לצמצום (כדי לא לפגוע בלומדות/משימות המודל).
   const modelLocked = new Set<string>();
   for (const mt of modelTasks[grade]) for (const n of mt.topicNames ?? []) modelLocked.add(n);
+  // תהליך התכן ההנדסי (ז') - רובו חובה במפרט, לא מוצע לצמצום.
+  if (grade === 7) modelLocked.add('תהליך התכן ההנדסי');
   const domains = topicsByDomain(bank)
     .map((d) => ({ ...d, topics: d.topics.filter((t) => !modelLocked.has(t.name)) }))
     .filter((d) => d.topics.length > 0);
@@ -979,7 +981,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       const bank = banks[grade];
       const moeFullHours = bank.topics.reduce((a, t) => a + t.hours, 0);
       const deviation = {
-        gradeLabel: GRADE_LABEL[grade],
+        gradeLabel: `${GRADE_LABEL[grade]}${klass.trim() ? ` (${klass.trim()})` : ''}`,
         statusHours: statusHours ?? null,
         actualHours: weeklyHours,
         hoursDeviates: statusHours != null && weeklyHours !== statusHours,
@@ -1098,9 +1100,9 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
           <p className="step-sub">חלקי את השעות השבועיות לימים שלך - לפי זה תיבנה הפריסה האישית, שיעור אחר שיעור.</p>
           <ScheduleEditor schedule={schedule} onChange={setDayHours} targetHours={statusHours} />
           <div className="klass-field">
-            <label className="flab">שם הכיתה (לא חובה)</label>
+            <label className="flab">שם הכיתה (חובה)</label>
             <input className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)} placeholder="למשל: ז'1" />
-            <span className="klass-hint">יופיע בכותרת ה-PDF וביומן - שימושי אם את מלמדת כמה כיתות באותה שכבה.</span>
+            <span className="klass-hint">כל כיתה מקבלת גאנט ויומן משלה. כניסה חוזרת לאותה כיתה מעדכנת אותה - לא יוצרת כפילות.</span>
           </div>
           {grade === 9 && <Grade9OrderPanel order={topicOrder} onOrder={setTopicOrder} />}
           <EventsPanel events={customEvents} onChange={setCustomEvents} />
@@ -1114,7 +1116,8 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
           )}
           <div className="step-nav">
             <button className="ac-btn ghost" onClick={() => goStep(1)}>הקודם</button>
-            <button className="btn btn-pr" onClick={() => goStep(3)}>הבא - התוכנית שלך</button>
+            <button className="btn btn-pr" onClick={() => goStep(3)} disabled={!klass.trim()}>הבא - התוכנית שלך</button>
+            {!klass.trim() && <span className="step-need">מלאי את שם הכיתה כדי להמשיך</span>}
           </div>
         </div>
       )}
