@@ -14,7 +14,7 @@ interface SessionLike {
 
 // כתובת ה-Web App של סקריפט המסירה (רץ בחשבון ההתיישבותי, יוצר תיקיות ושומר קבצים).
 const DELIVERY_URL =
-  'https://script.google.com/macros/s/AKfycbwXKEsH63qmCUO-ENbCk5kC_5rtKYRNcoDUjfdt4eHGlCjNnEdlsl0PzoBi6H9sQsQZ5Q/exec';
+  'https://script.google.com/macros/s/AKfycbyBO-W--uVbHG_C7W7OBNj3nuU2L97EncZ1szYBJQvYtFFVkBxkJrRPAoQ2lfhRXOUqMg/exec';
 
 /** תאריך ל-ICS בפורמט יום-שלם: YYYYMMDD. */
 function icsDate(d: Date): string {
