@@ -818,7 +818,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
         </div>
       </div>
 
-      {domains.length > 0 && (
+      {domains.length > 0 && modelLocked.size > 0 && (
         <div className="adjust-note lock">
           <b>שימי לב:</b> נושאים שעליהם נשענות משימות מודל אינם מוצגים כאן לצמצום, כדי לא לפגוע בלומדות ובמשימות המודל.
         </div>
