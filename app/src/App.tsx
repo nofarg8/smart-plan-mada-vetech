@@ -240,8 +240,8 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
           <p className="login-sub">נשתמש בהם כדי לשלוף את פרטי בית הספר שלך ולבנות תוכנית אישית.</p>
 
           <div className="field">
-            <label className="flab">שם המורה</label>
-            <input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="שם מלא" />
+            <label className="flab">שם מלא</label>
+            <input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="שם פרטי ושם משפחה" />
           </div>
 
           <div className="field">
@@ -256,7 +256,7 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
               <div className="found-row">
                 <IconCheck />
                 <span>{found.schoolName}</span>
-                <span className="found-note">נמצא בפרטי בית הספר</span>
+                <span className="found-note">פרטי בית הספר נמצאו</span>
               </div>
             )}
           </div>
@@ -1146,6 +1146,16 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         <div className="step-page">
           <h2 className="step-h">מתי את מלמדת {GRADE_LABEL[grade]}?</h2>
           <p className="step-sub">הלו"ז נבנה לכל כיתה בנפרד: בחרי את הכיתה, וחלקי את השעות השבועיות שלה לימים - לפי זה תיבנה הפריסה האישית, שיעור אחר שיעור.</p>
+          <div className="step-grade">
+            <label className="flab">שכבה</label>
+            <div className="grade-toggle big">
+              {GRADES.map((g) => (
+                <button key={g} className={`gt ${g === grade ? 'active' : ''}`} onClick={() => onGrade(g)}>
+                  {GRADE_LABEL[g]}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="klass-field">
             <label className="flab">לאיזו כיתה בונים עכשיו את הלו"ז? (חובה)</label>
             <select className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)}>

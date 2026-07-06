@@ -847,6 +847,10 @@ body {
 .step-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 26px; }
 .step-need { font: 600 13px 'Rubik'; color: var(--mustard-text); }
 
+/* בורר השכבה בתוך מסך השעות - ברור וגדול (בשאר המסכים הוא בכותרת) */
+.step-grade { margin: 0 0 18px; }
+.grade-toggle.big .gt { font-size: 15px; padding: 11px 26px; }
+
 /* כפתור עריכת התוכנית - תמיד נגיש במסך התוכנית */
 .edit-plan-row { margin: -4px 0 18px; }
 .edit-plan-btn {
