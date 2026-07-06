@@ -969,6 +969,10 @@ body {
 .result-page.exporting .step-nav,
 .result-page.exporting .slot-editrow,
 .result-page.exporting .hd-logout { display: none !important; }
+/* בצילום ל-PDF: בלי sticky (משבש את הצילום) ובלי צל כבד */
+.result-page.exporting .wk-month { position: static; }
+.result-page.exporting .finish-cta,
+.result-page.exporting .adjust-foot { display: none !important; }
 
 /* ===== רספונסיביות ===== */
 @media (max-width: 1100px) {

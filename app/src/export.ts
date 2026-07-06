@@ -216,7 +216,17 @@ async function generatePdfBase64(element: HTMLElement): Promise<string> {
   const opt = {
     margin: 6,
     image: { type: 'jpeg' as const, quality: 0.85 },
-    html2canvas: { scale: 1.4, useCORS: true, backgroundColor: '#ffffff', windowWidth: element.scrollWidth },
+    html2canvas: {
+      scale: 1.4,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      windowWidth: element.scrollWidth,
+      // מצב הייצוא מוחל ישירות על העותק שהספרייה מצלמת - מבטיח PDF נקי:
+      // בלי כפתורי עריכה/פקדים, עם כל תתי-הנושא פתוחים, בלי זום ובלי sticky.
+      onclone: (doc: Document) => {
+        doc.querySelector('.result-page')?.classList.add('exporting');
+      },
+    },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
     pagebreak: { mode: ['css', 'legacy'] },
   };
