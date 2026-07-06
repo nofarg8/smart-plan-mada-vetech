@@ -230,11 +230,26 @@ async function generatePdfBase64(element: HTMLElement): Promise<string> {
       // בלי כפתורי עריכה/פקדים, עם כל תתי-הנושא פתוחים, בלי זום ובלי sticky.
       onclone: (doc: Document) => {
         doc.querySelector('.result-page')?.classList.add('exporting');
+        // מזריקים את כל חוקי העיצוב ישירות לעותק המצולם - בלי תלות בטעינת קבצים
+        // אסינכרונית (מרוץ הטעינה הזה גרם ל-PDF לצאת לפעמים בלי עיצוב בכלל).
+        let css = '';
+        for (const sheet of Array.from(document.styleSheets)) {
+          try {
+            for (const rule of Array.from(sheet.cssRules)) css += rule.cssText + '
+';
+          } catch {
+            /* גיליון חוצה-מקור (גופני Google) - נשאר דרך הקישור הרגיל */
+          }
+        }
+        const style = doc.createElement('style');
+        style.textContent = css;
+        doc.head.appendChild(style);
       },
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
     pagebreak: { mode: ['css', 'legacy'] },
   };
+  try { await (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready; } catch { /* לא חוסם */ }
   const dataUri = await html2pdf().set(opt).from(element).outputPdf('datauristring');
   const i = dataUri.indexOf('base64,');
   return i >= 0 ? dataUri.slice(i + 7) : dataUri;
