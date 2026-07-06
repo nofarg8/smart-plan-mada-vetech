@@ -93,6 +93,11 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
         out.push({ start: d, end: nextDay(d), summary: `אירוע בית ספרי: ${sl.label}`, category: 'אירוע' });
         continue;
       }
+      // שיעור חקר (כיתה ט', לקראת היריד) - נכנס לקלנדר כשעת חקר.
+      if (sl.kind === 'חקר') {
+        out.push({ start: d, end: nextDay(d), summary: `חקר: ${sl.label}`, category: 'חקר' });
+        continue;
+      }
       if (sl.kind !== 'נושא') continue;
       // שיעור שנערך ידנית - הטקסט של המורה גובר.
       const topics = sl.overridden ? sl.label : (sl.topicList && sl.topicList.length ? sl.topicList.join(' · ') : sl.label);
