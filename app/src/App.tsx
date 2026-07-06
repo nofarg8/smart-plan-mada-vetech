@@ -927,7 +927,9 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
     () => stateRef.current.topicOrderByGrade[grade] ?? defaultOrder(grade),
   );
   // השלב בשאלון: 1 פרטי בית הספר, 2 מערכת שעות ואירועים, 3 התוכנית המלאה.
-  const [step, setStep] = useState<number>(saved?.step ?? 1);
+  // מורה חוזרת נוחתת תמיד על מסך השעות (שלב 2) - השעות ממולאות מהפעם הקודמת,
+  // היא מאשרת/מעדכנת וממשיכה. מורה חדשה מתחילה מפרטי בית הספר (שלב 1).
+  const [step, setStep] = useState<number>(saved?.session ? 2 : 1);
   // שם הכיתה (רשות, למשל ז'1) - נכנס לכותרות, ל-PDF וליומן.
   const [klass, setKlass] = useState<string>(stateRef.current.classByGrade[grade] ?? '');
   // אירועי בית ספר שהמורה הוסיפה - שיעור שנופל עליהם לא משובץ.
@@ -1102,6 +1104,14 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
           </div>
           {grade === 9 && <Grade9OrderPanel order={topicOrder} onOrder={setTopicOrder} />}
           <EventsPanel events={customEvents} onChange={setCustomEvents} />
+          {plan.shortfallHours > 0 && applied.size === 0 && (
+            <div className="alerts">
+              <div className="alert warn">
+                <IconAlert color="#c2603f" />
+                <span>שימי לב: לפי השעות שהזנת אפשר ללמד {plan.capacityHours} שעות תוכן, והתוכנית המלאה דורשת יותר - חסרות {plan.shortfallHours} שעות. בשלב הבא יופיע מקטע <b>"בואי נתאים את התוכנית לשעות שלך"</b> שבו תוכלי לצמצם נושאים.</span>
+              </div>
+            </div>
+          )}
           <div className="step-nav">
             <button className="ac-btn ghost" onClick={() => goStep(1)}>הקודם</button>
             <button className="btn btn-pr" onClick={() => goStep(3)}>הבא - התוכנית שלך</button>
