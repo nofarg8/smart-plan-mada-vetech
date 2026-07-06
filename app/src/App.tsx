@@ -625,11 +625,8 @@ function WeeklyPlan({ weeks, expandAll, school, onOverride }: {
   return <div className="weekly-plan">{rows}</div>;
 }
 
-/* ---------- כיתה ט': בחירת נושאים וסידור (אין מתווה חודשי כפוי) ---------- */
-function Grade9Panel({ order, dropped, onOrder, onToggle }: {
-  order: string[]; dropped: Set<string>;
-  onOrder: (names: string[]) => void; onToggle: (name: string) => void;
-}) {
+/* ---------- כיתה ט': סידור הנושאים (כולם חובה; אין מתווה חודשי כפוי) ---------- */
+function Grade9OrderPanel({ order, onOrder }: { order: string[]; onOrder: (names: string[]) => void }) {
   const bank = banks[9];
   const byName = new Map(bank.topics.map((t) => [t.name, t]));
   const move = (i: number, dir: -1 | 1) => {
@@ -639,31 +636,41 @@ function Grade9Panel({ order, dropped, onOrder, onToggle }: {
     [next[i], next[j]] = [next[j], next[i]];
     onOrder(next);
   };
-  const selectedHours = order.filter((n) => !dropped.has(n)).reduce((a, n) => a + (byName.get(n)?.hours ?? 0), 0);
+  const totalHours = bank.topics.reduce((a, t) => a + t.hours, 0);
   return (
     <div className="g9-panel">
       <div className="g9-head">
-        <div className="g9-title">בחרי את הנושאים ואת הסדר</div>
-        <span className="g9-hours">נבחרו {selectedHours} שעות תוכן</span>
+        <div className="g9-title">סדר הנושאים שלך לאורך השנה</div>
+        <span className="g9-hours">כל הנושאים - {totalHours} שעות תוכן</span>
       </div>
-      <p className="g9-sub">בכיתה ט' אין סדר לימוד קבוע - את בוחרת. סמני אילו נושאים תלמדי השנה, וסדרי אותם בסדר שנוח לך (למעלה = מוקדם יותר). המערכת תפרוס אותם על השנה עם החגים והחקר.</p>
+      <p className="g9-sub">
+        בכיתה ט' את מלמדת את <b>כל</b> הנושאים - כולם חובה - אבל הסדר בידיים שלך. הצענו כאן סדר התחלתי;
+        סדרי אותו בחיצים כרצונך (למעלה = מוקדם יותר בשנה). המערכת תפרוס לפי הסדר שלך, ותקדיש את השבועות
+        שלפני יריד החקר לעבודת החקר. אם יחסרו לך שעות - בשלב הבא תוכלי לצמצם, ועדיף להתחיל מנושאים עם
+        הרבה חומר רשות/הרחבה.
+      </p>
       <div className="g9-list">
         {order.map((name, i) => {
           const t = byName.get(name);
           if (!t) return null;
-          const off = dropped.has(name);
+          const nOpt = (t.optional ?? []).length;
           return (
-            <div key={name} className={`g9-row ${off ? 'off' : ''}`}>
+            <div key={name} className="g9-row">
+              <span className="g9-pos">{i + 1}</span>
               <div className="g9-move">
-                <button className="g9-arrow" onClick={() => move(i, -1)} disabled={i === 0 || off} title="הזיזי למעלה">▲</button>
-                <button className="g9-arrow" onClick={() => move(i, 1)} disabled={i === order.length - 1 || off} title="הזיזי למטה">▼</button>
+                <button className="g9-arrow" onClick={() => move(i, -1)} disabled={i === 0} title="הזיזי למעלה (מוקדם יותר)">▲</button>
+                <button className="g9-arrow" onClick={() => move(i, 1)} disabled={i === order.length - 1} title="הזיזי למטה (מאוחר יותר)">▼</button>
               </div>
-              <label className="g9-check">
-                <input type="checkbox" checked={!off} onChange={() => onToggle(name)} />
-              </label>
               <div className="g9-body">
                 <div className="g9-name">{t.name}</div>
-                <div className="g9-meta"><span className="g9-domain">{t.domain}</span><span className="g9-h">{t.hours} ש'</span></div>
+                <div className="g9-meta">
+                  <span className="g9-domain">{t.domain}</span>
+                  <span className="g9-h">{t.hours} ש'</span>
+                  <span className="adt-cls core">חובה</span>
+                  {nOpt > 0 && (
+                    <span className="g9-opt">{nOpt === 1 ? 'תת-נושא אחד רשות/הרחבה' : `${nOpt} תתי-נושא רשות/הרחבה`}</span>
+                  )}
+                </div>
               </div>
             </div>
           );
@@ -1046,10 +1053,12 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   }, [grade, weeklyHours, scheduleKey, appliedKey, eventsKey, overridesKey, orderKey, ganttVersion]);
 
   const goStep = (s: number) => setStep(s);
+  // החלפת שכבה: לכל שכבה מספר שעות/ימים שונה - מקפיצים למסך השעות כדי שהמורה תאשר/תעדכן.
+  const changeGrade = (g: Grade) => { if (g !== grade) setStep(2); onGrade(g); };
   return (
     <>
     <div className="result-page" dir="rtl" ref={pageRef}>
-      <Header grade={grade} onGrade={onGrade} session={session} onFinalize={() => setShowExport(true)} working={delivery.status === 'working'} onLogout={onLogout} showFinalize={step === 3} />
+      <Header grade={grade} onGrade={changeGrade} session={session} onFinalize={() => setShowExport(true)} working={delivery.status === 'working'} onLogout={onLogout} showFinalize={step === 3} />
 
       {delivery.status !== 'idle' && (
         <div className={`deliver-bar ${delivery.status}`}>
@@ -1081,18 +1090,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
             <input className="inp klass-inp" value={klass} onChange={(e) => setKlass(e.target.value)} placeholder="למשל: ז'1" />
             <span className="klass-hint">יופיע בכותרת ה-PDF וביומן - שימושי אם את מלמדת כמה כיתות באותה שכבה.</span>
           </div>
-          {grade === 9 && (
-            <Grade9Panel
-              order={topicOrder}
-              dropped={applied}
-              onOrder={setTopicOrder}
-              onToggle={(name) => {
-                const upd = (s: Set<string>) => { const n = new Set(s); if (n.has(name)) n.delete(name); else n.add(name); return n; };
-                setApplied(upd);
-                setPending(upd);
-              }}
-            />
-          )}
+          {grade === 9 && <Grade9OrderPanel order={topicOrder} onOrder={setTopicOrder} />}
           <EventsPanel events={customEvents} onChange={setCustomEvents} />
           <div className="step-nav">
             <button className="ac-btn ghost" onClick={() => goStep(1)}>הקודם</button>
@@ -1131,11 +1129,11 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         </div>
       )}
 
-      {grade !== 9 && <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} />}
+      <AdjustPanel grade={grade} plan={plan} pending={pending} applied={applied} onToggle={togglePending} onConfirm={confirmDrop} onReset={resetDrop} />
       {grade === 9 && (
         <div className="g9-note">
           <IconAlert color="#1c4e5e" />
-          <span>אלה הנושאים והסדר שבחרת בשלב הקודם. לשינוי - חזרי ל<b>"מערכת השעות"</b> בפס ההתקדמות למעלה.</span>
+          <span>הסדר לפי מה שקבעת ב<b>"מערכת השעות"</b> (בפס ההתקדמות למעלה). השבועות שלפני יריד החקר מוקדשים לעבודת החקר.</span>
         </div>
       )}
 

@@ -900,8 +900,11 @@ body {
   display: flex; align-items: center; gap: 12px; padding: 9px 12px;
   background: #fff; border: 1px solid var(--card-border); border-radius: 10px;
 }
-.g9-row.off { background: #f4f1ea; border-color: var(--card-border-2); }
-.g9-row.off .g9-name { text-decoration: line-through; color: var(--muted-2); }
+.g9-pos {
+  flex: 0 0 auto; width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font: 700 12px 'Rubik'; color: #fff; background: var(--teal-2);
+}
 .g9-move { display: flex; flex-direction: column; gap: 2px; }
 .g9-arrow {
   font: 700 10px 'Rubik'; color: var(--teal); background: var(--teal-tint);
@@ -909,12 +912,12 @@ body {
 }
 .g9-arrow:hover:not(:disabled) { background: var(--teal-tint-2); }
 .g9-arrow:disabled { opacity: 0.3; cursor: default; }
-.g9-check input { width: 18px; height: 18px; accent-color: var(--teal); cursor: pointer; }
 .g9-body { flex: 1; min-width: 0; }
 .g9-name { font: 600 14px 'Rubik'; color: var(--heading-2); }
-.g9-meta { display: flex; gap: 10px; margin-top: 2px; }
+.g9-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 3px; }
 .g9-domain { font: 600 11.5px 'Rubik'; color: var(--teal-2); }
-.g9-h { font: 500 11.5px 'Rubik'; color: var(--muted); }
+.g9-h { font: 500 11.5px 'Rubik'; color: var(--muted); font-variant-numeric: tabular-nums; }
+.g9-opt { font: 500 11px 'Rubik'; color: var(--mustard-text); background: var(--mustard-tint); border: 1px solid var(--mustard-tint-2); padding: 1px 8px; border-radius: 999px; }
 .g9-note {
   display: flex; align-items: center; gap: 9px; margin-bottom: 20px;
   font: 500 13.5px/1.5 'Rubik'; color: var(--teal);
