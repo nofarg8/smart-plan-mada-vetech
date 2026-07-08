@@ -333,7 +333,7 @@ export async function finalizePlan(plan: Plan, session: SessionLike, weekly: Wee
 // (gergrood@gmail.com), לא בחשבון ההתיישבותי - הדיווחים נאספים בגיליון אצלה.
 // כל עוד הכתובת ריקה - הכפתור לא מוצג באתר (יופעל ברגע שנופר תפרסם ותשלח URL).
 export const FEEDBACK_URL =
-  'https://script.google.com/macros/s/AKfycbyonfWMADGuS0ymYDvK8njohUlOUMddaARGwm4kOYjs3w_xNNKhd-PvhP37-dWKBI27/exec';
+  'https://script.google.com/macros/s/AKfycbyFb6fi_XepNoSMZyD_UcAUx7tSehc8G7hPb0kTK6Px745pP7A6gGpn6NYN_6ST8gX6/exec';
 
 /** שולח משוב/דיווח תקלה. מחזיר הצלחה; בפיתוח בלי כתובת - מדמה הצלחה לבדיקת החוויה. */
 export async function submitFeedback(payload: Record<string, unknown>): Promise<boolean> {
