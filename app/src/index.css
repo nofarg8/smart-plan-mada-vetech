@@ -1054,26 +1054,30 @@ body {
 
 /* ===== כפתור משוב ודיווח תקלות (צף, בסגנון הלוגו) ===== */
 .fb-fab {
-  position: fixed; bottom: 18px; left: 18px; z-index: 40;
+  position: fixed; bottom: 20px; left: 20px; z-index: 40;
   display: flex; align-items: center; gap: 0;
-  height: 58px; padding: 6px; border-radius: 999px;
+  height: 70px; padding: 8px; border-radius: 999px;
   background: linear-gradient(135deg, var(--teal), var(--teal-2));
   border: none; cursor: pointer;
-  box-shadow: 0 6px 20px rgba(28, 78, 94, 0.35);
+  box-shadow: 0 8px 24px rgba(28, 78, 94, 0.4);
   transition: box-shadow 0.2s, transform 0.2s;
 }
-.fb-fab:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(28, 78, 94, 0.45); }
+.fb-fab:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(28, 78, 94, 0.5); }
 .fb-fab img {
-  width: 46px; height: 46px; border-radius: 50%; background: #fff;
-  object-fit: contain; padding: 3px;
+  width: 54px; height: 54px; border-radius: 50%; background: #fff;
+  object-fit: contain; padding: 4px;
 }
+/* התווית מוצגת תמיד - כדי שהמורה תזהה את הכפתור גם בנייד (בלי hover) */
 .fb-fab-label {
-  font: 700 13.5px 'Rubik'; color: #fff; white-space: nowrap;
-  max-width: 0; overflow: hidden; opacity: 0;
-  transition: max-width 0.25s ease, opacity 0.25s ease, padding 0.25s ease;
+  font: 700 15px 'Rubik'; color: #fff; white-space: nowrap;
+  padding: 0 14px 0 10px;
 }
-.fb-fab:hover .fb-fab-label, .fb-fab:focus-visible .fb-fab-label { max-width: 130px; opacity: 1; padding: 0 12px 0 8px; }
 @media print { .fb-fab { display: none !important; } }
+@media (max-width: 720px) {
+  .fb-fab { height: 60px; padding: 7px; bottom: 14px; left: 14px; }
+  .fb-fab img { width: 46px; height: 46px; }
+  .fb-fab-label { font-size: 13.5px; padding: 0 11px 0 8px; }
+}
 
 /* פאנל המשוב */
 .fb-modal { position: relative; max-width: 560px; max-height: 86vh; overflow-y: auto; }
