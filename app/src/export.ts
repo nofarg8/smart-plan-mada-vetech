@@ -75,6 +75,8 @@ interface IcsEvent {
   end: Date; // בלעדי (יום אחרי היום האחרון)
   summary: string;
   category: string;
+  /** פירוט תתי-הנושא (חובה/הרחבה/רשות) - נכנס לתיאור האירוע ביומן וב-ICS. */
+  description?: string;
 }
 
 /** בונה את רשימת אירועי הקלנדר מהתוכנית + הפריסה השבועית. */
@@ -107,13 +109,25 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
       // שיעור שנערך ידנית - הטקסט של המורה גובר.
       const topics = sl.overridden ? sl.label : (sl.topicList && sl.topicList.length ? sl.topicList.join(' · ') : sl.label);
       if (!topics || topics === '-') continue;
-      out.push({ start: d, end: nextDay(d), summary: topics, category: 'נושא' });
+      // תיאור: פירוט תתי-הנושא (חובה/הרחבה/רשות) לאותו שיעור.
+      const description = (sl.subItems && sl.subItems.length)
+        ? sl.subItems.map((si) => `${si.level}: ${si.name}`).join(' · ')
+        : undefined;
+      out.push({ start: d, end: nextDay(d), summary: topics, category: 'נושא', description });
     }
   }
 
-  // משימות מודל / חקר / מבחנים - מתוך הדד-ליינים המתוארכים.
+  // משימות מודל / מבחנים - מתוך הדד-ליינים המתוארכים.
+  // אבני דרך החקר (הגשות/ירידים) הן תזכורות בלבד - מסומנות "תזכורת:" ובקטגוריה נפרדת,
+  // כדי שיובחנו משיעורי החקר שהם שעת לימוד ממש (kind 'חקר' שכבר נכנס למעלה).
   for (const m of plan.deadlines) {
-    out.push({ start: m.date, end: nextDay(m.date), summary: m.label, category: m.kind });
+    const isReminder = m.kind === 'חקר' || m.kind === 'יריד';
+    out.push({
+      start: m.date,
+      end: nextDay(m.date),
+      summary: isReminder ? `תזכורת: ${m.label}` : m.label,
+      category: isReminder ? 'תזכורת' : m.kind,
+    });
   }
 
   // יוזמות ותחרויות STEM.
@@ -153,7 +167,7 @@ export function buildICS(plan: Plan, session: SessionLike, weekly: WeekSchedule[
       `DTEND;VALUE=DATE:${icsDate(ev.end)}`,
       `SUMMARY:${esc(ev.summary)}`,
       `CATEGORIES:${esc(ev.category)}`,
-      `DESCRIPTION:${esc(`${gradeLabel} · ${session.school.schoolName} · תשפ"ז`)}`,
+      `DESCRIPTION:${esc(ev.description ? `${ev.description}\n${gradeLabel} · ${session.school.schoolName} · תשפ"ז` : `${gradeLabel} · ${session.school.schoolName} · תשפ"ז`)}`,
       'END:VEVENT',
     );
   });
@@ -162,10 +176,10 @@ export function buildICS(plan: Plan, session: SessionLike, weekly: WeekSchedule[
   return lines.map(foldLine).join('\r\n');
 }
 
-/** אירועי התוכנית כרשימה פשוטה (תאריכים מקומיים + קטגוריה לצבע) - לבניית יומן משותף ב-Apps Script. */
-export function planEvents(plan: Plan, weekly: WeekSchedule[]): { start: string; end: string; title: string; category: string }[] {
+/** אירועי התוכנית כרשימה פשוטה (תאריכים מקומיים + קטגוריה + תיאור) - לבניית יומן משותף ב-Apps Script. */
+export function planEvents(plan: Plan, weekly: WeekSchedule[]): { start: string; end: string; title: string; category: string; description?: string }[] {
   const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  return collectEvents(plan, weekly).map((e) => ({ start: fmt(e.start), end: fmt(e.end), title: e.summary, category: e.category }));
+  return collectEvents(plan, weekly).map((e) => ({ start: fmt(e.start), end: fmt(e.end), title: e.summary, category: e.category, description: e.description }));
 }
 
 /** מוריד Blob בשם נתון. */

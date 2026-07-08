@@ -3,7 +3,7 @@
 // פריסת נושאים על שבועות (מדלג על חופשות), שיבוץ משימות מודל, מסלול חקר, ודד-ליינים.
 
 import type { BreadthTopic, GradeBank, ModelTask } from '../data';
-import { banks, modelTasks as modelTasksByGrade, ganttWeeks, initiatives, officialHolidays } from '../data';
+import { banks, modelTasks as modelTasksByGrade, ganttWeeks, initiatives, officialHolidays, coreSubtopics } from '../data';
 import type { Grade, GanttWeek } from '../data';
 
 export interface EngineInput {
@@ -22,6 +22,11 @@ export interface EngineInput {
    * לפי הסדר הזה במקום סדר המפרט. נושאים שלא ברשימה נשמרים בסוף, בסדר המקורי.
    */
   topicOrder?: string[];
+  /**
+   * מספר ימי ההוראה בשבוע של המורה (כמה ימים עם שעות). כיתה ט' בלבד: משמש
+   * לחשב כמה תוכן "נאכל" בכל שבוע חקר (שיעור חקר אחד = יום הוראה אחד מתוך הימים).
+   */
+  teachingDays?: number;
 }
 
 export interface ScheduledTopic {
@@ -59,10 +64,16 @@ export interface Plan {
   /** פער השעות: כמה שעות תוכן חסרות כדי ללמד את כל מה שנבחר. 0 = הכול נכנס. */
   shortfallHours: number;
   /**
-   * כיתה ט' בלבד: שבועות שמוקדשים לפעילות (חקר לפני היריד / הגשת תוצרי תחרויות לפני חודש STEM),
-   * עם התווית שתוצג. בשבועות אלה לא מלמדים חומר חדש; המנוע דוחס את התוכן לשאר השנה.
+   * כיתה ט' בלבד: שבועות שלמים שמוקדשים לפעילות (הגשת תוצרי תחרויות STEM לפני 1.12).
+   * בשבועות אלה כל השיעורים מוקדשים לפעילות ולא מלמדים חומר חדש.
    */
   reservedWeeks: { week: number; label: string; kind: 'חקר' | 'תחרויות' }[];
+  /**
+   * כיתה ט' בלבד: שבועות שבהם יום הוראה אחד (האחרון בשבוע) מוקדש לשיעור חקר -
+   * מאמצע אוקטובר (כל שבועיים) ומאמצע נובמבר ועד הגשת הפוסטרים למחוז (15.2, כל שבוע).
+   * שאר שיעורי השבוע ממשיכים בתוכן; המנוע דוחס את התוכן בהתאם.
+   */
+  researchWeeks: number[];
 }
 
 /** תא חודש בלוח השנה החודשי (מסך התוצאה). כל הנתונים נגזרים מהמנוע + הגאנט הרשמי. */
@@ -167,7 +178,7 @@ function weekByNumber(n: number): GanttWeek | undefined {
 }
 
 /** פריסת נושאי החובה על השבועות עם תאריכים. */
-function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<string>, topicOrder?: string[], reserved?: Set<number>): {
+function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<string>, topicOrder?: string[], reserved?: Set<number>, researchWeeks?: Set<number>, teachingDays?: number): {
   scheduled: ScheduledTopic[];
   overflowHours: number;
   plannedHours: number;
@@ -175,6 +186,15 @@ function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<str
 } {
   const weeks = teachingWeeks();
   const isReserved = (w: GanttWeek) => (reserved ? reserved.has(w.week) : false);
+  // בשבוע חקר, יום הוראה אחד (מתוך ימי המורה) יורד מהתוכן. contentFactor מחזיר את
+  // חלק השבוע שנשאר לתוכן: שבוע שמור=0, שבוע חקר=חלק היחסי בלי יום אחד, אחרת=מלא.
+  const researchFraction = teachingDays && teachingDays > 0 ? 1 / teachingDays : 0;
+  const contentFactor = (w: GanttWeek): number => {
+    if (isReserved(w)) return 0;
+    const f = weekFactor(w);
+    if (researchWeeks && researchWeeks.has(w.week)) return Math.max(0, f * (1 - researchFraction));
+    return f;
+  };
   // נושאי התוכן שנכנסים לפריסה: כל הנושאים פחות אלה שהמורה בחרה לצמצם (מנגנון 8.2).
   let activeTopics = bank.topics.filter((t) => !dropped.has(t.name));
   // כיתה ט': סדר הנושאים לפי בחירת המורה (topicOrder). נושאים מחוץ לרשימה נשמרים בסוף.
@@ -185,12 +205,12 @@ function scheduleTopics(bank: GradeBank, weeklyContent: number, dropped: Set<str
   // קצב הוראה = סך שעות התוכן / סכום מקדמי השבועות (בלי שבועות החקר השמורים, ט').
   // פורסים כך שכל הנושאים נכנסים; במחסור שעות הקצב עולה (דחיסה) במקום להשמיט נושאים.
   const totalHours = activeTopics.reduce((acc, t) => acc + t.hours, 0);
-  const totalFactor = weeks.reduce((acc, w) => acc + (isReserved(w) ? 0 : weekFactor(w)), 0);
+  const totalFactor = weeks.reduce((acc, w) => acc + contentFactor(w), 0);
   const pace = totalFactor > 0 ? totalHours / totalFactor : weeklyContent;
-  // קיבולת ההוראה בפועל לתוכן: שעות-תוכן שבועיות × מקדמי השבועות הפנויים (בלי שבועות החקר).
+  // קיבולת ההוראה בפועל לתוכן: שעות-תוכן שבועיות × מקדמי התוכן הפנויים (בלי שבועות/שיעורי חקר).
   const capacityHours = weeklyContent * totalFactor;
-  // קיבולת שעות לכל שבוע לפי הקצב (מדלג על חופשות ועל שבועות חקר שמורים)
-  const cap = weeks.map((w) => ({ w, hours: isReserved(w) ? 0 : pace * weekFactor(w) }));
+  // קיבולת שעות לכל שבוע לפי הקצב (מדלג על חופשות, שבועות שמורים ושיעורי חקר).
+  const cap = weeks.map((w) => ({ w, hours: pace * contentFactor(w) }));
   let wi = 0;
   let remainInWeek = cap[0]?.hours ?? 0;
 
@@ -334,38 +354,41 @@ function accumulateWeeksBack(anchorWeek: number, weeklyContent: number, budget: 
 }
 
 /**
- * כיתה ט' בלבד: 15 השעות שאינן משויכות לנושא תוכן (140-125) מוקדשות לפעילות:
- *  - בלוק STEM: השבוע(ות) שלפני חודש ה-STEM (ינואר) - הכנה והגשת תוצרי תחרויות.
- *  - בלוק חקר: השבועות שלפני יריד החקר המחוזי (16.3) - עבודה על עבודת החקר.
- * בשבועות אלה לא מלמדים חומר חדש; המנוע דוחס את התוכן לשאר השנה.
+ * כיתה ט' בלבד: הקצאת זמן לפעילות (עדכון 8.7):
+ *  - בלוק STEM (שבוע שלם): השבוע שלפני המועד המחוזי לתחרויות (1.12) - הכנה והגשת תוצרים.
+ *  - שיעורי חקר (יום הוראה אחד בשבוע): מאמצע אוקטובר (15.10) בקצב מתון - שיעור כל שבועיים,
+ *    ומאמצע נובמבר (15.11) ועד הגשת הפוסטרים למחוז (15.2) - שיעור בכל שבוע.
+ *    שיעור החקר תופס את יום ההוראה האחרון בשבוע; שאר השיעורים ממשיכים בתוכן, שנדחס בהתאם.
  */
-function reservedActivityWeeks(weeklyContent: number): { week: number; label: string; kind: 'חקר' | 'תחרויות' }[] {
-  const TOTAL_BUDGET = 15;
-  const stemBudget = Math.max(weeklyContent, 3); // ~שבוע אחד לתחרויות
-  // תחרויות STEM (עין העדשה, חדרי בריחה): ההכנה וההגשה לפני המועד המחוזי (1.12),
-  // ורק אחר כך הגמר הארצי בינואר - כמו בחקר: קודם התיישבותי, אחר כך ארצי.
-  const stemWeek = firstTeachingWeekFrom(new Date(2026, 11, 1)); // 1.12.26 - הגשה מחוזית
-  const fairWeek = firstTeachingWeekFrom(new Date(2027, 2, 16)); // 16.3.27 - יריד מחוזי
-  const stem = accumulateWeeksBack(stemWeek, weeklyContent, stemBudget, new Set());
-  const stemHours = stem.reduce((a, wk) => a + weeklyContent * weekFactor(teachingWeeks().find((w) => w.week === wk)!), 0);
-  // חקר: לפי לוח ההתיישבותי (הירוק בגאנט) העבודה מתחילה מוקדם - שבועות החקר נפרסים
-  // מאמצע נובמבר ועד יריד ההתיישבותי (16.3), כשהשבוע האחרון צמוד ליריד. כך התלמידות
-  // מוכנות קודם למחוזי ורק אחר כך לארצי (1.6).
-  const novWeek = firstTeachingWeekFrom(new Date(2026, 10, 15)); // 15.11.26
+function reservedActivityWeeks(weeklyContent: number): {
+  stemWeeks: { week: number; label: string; kind: 'חקר' | 'תחרויות' }[];
+  researchWeeks: number[];
+} {
+  const stemBudget = Math.max(weeklyContent, 3); // ~שבוע אחד לתחרויות STEM (בלוק שלם)
+  const stemAnchor = firstTeachingWeekFrom(new Date(2026, 11, 1)); // 1.12.26 - הגשה מחוזית
+  const stem = accumulateWeeksBack(stemAnchor, weeklyContent, stemBudget, new Set());
   const stemSet = new Set(stem);
-  const candidates = teachingWeeks().filter((w) => weekFactor(w) > 0 && w.week >= novWeek && w.week < fairWeek && !stemSet.has(w.week));
-  const researchBudget = TOTAL_BUDGET - stemHours;
-  const need = Math.max(1, Math.min(candidates.length, Math.ceil(researchBudget / Math.max(1, weeklyContent))));
+
+  // חלון א' (15.10 - 15.11): פתיחה מתונה - שיעור חקר כל שבוע שני.
+  const octMid = firstTeachingWeekFrom(new Date(2026, 9, 15)); // 15.10.26
+  const novMid = firstTeachingWeekFrom(new Date(2026, 10, 15)); // 15.11.26
+  // חלון ב' (15.11 - 15.2): הקצאה מוגברת - שיעור חקר בכל שבוע, עד הגשת הפוסטרים למחוז.
+  const posterWeek = firstTeachingWeekFrom(new Date(2027, 1, 15)); // 15.2.27 - הגשת הפוסטרים
+
+  const teaching = teachingWeeks();
   const research: number[] = [];
-  for (let i = 0; i < need && candidates.length; i++) {
-    const idx = need === 1 ? candidates.length - 1 : Math.round((i * (candidates.length - 1)) / (need - 1));
-    const wk = candidates[idx].week;
-    if (!research.includes(wk)) research.push(wk);
+  // חלון א': כל שבוע שני (מדלגים על חופשות ועל שבוע ה-STEM).
+  const winA = teaching.filter((w) => weekFactor(w) > 0 && w.week >= octMid && w.week < novMid && !stemSet.has(w.week));
+  for (let i = 0; i < winA.length; i += 2) research.push(winA[i].week);
+  // חלון ב': כל שבוע.
+  for (const w of teaching) {
+    if (weekFactor(w) > 0 && w.week >= novMid && w.week <= posterWeek && !stemSet.has(w.week)) research.push(w.week);
   }
-  return [
-    ...stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM', kind: 'תחרויות' as const })),
-    ...research.map((week) => ({ week, label: 'עבודה על עבודת החקר לקראת היריד', kind: 'חקר' as const })),
-  ];
+
+  return {
+    stemWeeks: stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM', kind: 'תחרויות' as const })),
+    researchWeeks: Array.from(new Set(research)).sort((a, b) => a - b),
+  };
 }
 
 export function buildPlan(input: EngineInput): Plan {
@@ -374,11 +397,20 @@ export function buildPlan(input: EngineInput): Plan {
   // לכן כל השעות משמשות לתוכן (בלי הפחתת ה-+1, שאחרת תיצור כפל-ספירה של החקר).
   const weeklyContent = input.grade === 9 ? Math.max(1, input.weeklyHours) : Math.max(1, input.weeklyHours - 1);
   const dropped = new Set(input.droppedTopics ?? []);
-  // כיתה ט': שבועות הפעילות (STEM לפני ינואר + חקר לפני היריד). ז'/ח' - אין (מסלול חקר רגיל).
-  const reservedWeeks = input.grade === 9 ? reservedActivityWeeks(weeklyContent) : [];
-  const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(bank, weeklyContent, dropped, input.topicOrder, new Set(reservedWeeks.map((r) => r.week)));
+  // כיתה ט': בלוק STEM (שבוע שלם) + שיעורי חקר (יום בשבוע). ז'/ח' - אין.
+  const activity = input.grade === 9
+    ? reservedActivityWeeks(weeklyContent)
+    : { stemWeeks: [], researchWeeks: [] };
+  const reservedWeeks = activity.stemWeeks;
+  const researchWeeks = activity.researchWeeks;
+  const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(
+    bank, weeklyContent, dropped, input.topicOrder,
+    new Set(reservedWeeks.map((r) => r.week)),
+    new Set(researchWeeks),
+    input.grade === 9 ? input.teachingDays : undefined,
+  );
   const mtasks = scheduleModelTasks(modelTasksByGrade[input.grade], scheduled);
-  // מסלול החקר (אבני דרך + ירידים) שייך לכיתה ט' בלבד - בז'/ח' אין חקר בתוכנית.
+  // אבני הדרך של החקר (הגשות + ירידים) - כיתה ט' בלבד. הן תזכורות בלבד (לא תופסות שיעור).
   const research = input.grade === 9 ? researchTrack() : [];
 
   // מבחן מפמ"ר (16.5)
@@ -409,6 +441,7 @@ export function buildPlan(input: EngineInput): Plan {
     plannedCoreHours: Math.round(plannedHours),
     shortfallHours,
     reservedWeeks,
+    researchWeeks,
   };
 }
 
@@ -643,6 +676,8 @@ export interface WeekSchedule {
   initiatives: WeekInitiative[];
   /** ימים מדעיים בינלאומיים שנופלים בשבוע (מהגאנט) - מוצגים כהצעות עוגן לנושא. */
   scienceDays: string[];
+  /** תזכורות חקר שנופלות בשבוע (הגשות/ירידים) - נבדלות משיעורי החקר, לא שעת לימוד. */
+  reminders: string[];
   /** משבצות ההוראה של המורה בשבוע זה, מלאות בתוכן. */
   slots: SlotAssignment[];
 }
@@ -677,6 +712,8 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
       .filter((x) => x.d != null && inWeek(x.d as Date))
       .map((x) => ({ name: x.ini.name, scope: x.ini.scope, keywords: x.ini.keywords ?? [] }));
     const sciDays = uniq((w.scienceDays ?? []).map(cleanEventName).filter(Boolean));
+    // תזכורות החקר (הגשות/ירידים) שנופלות בשבוע - מוצגות כתזכורת, לא כשיעור.
+    const reminders = uniq(plan.research.filter((m) => inWeek(m.date)).map((m) => m.label));
     const base = {
       week: w.week,
       month: w.month,
@@ -685,6 +722,7 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
       holidays,
       initiatives: inits,
       scienceDays: sciDays,
+      reminders,
     };
     if (factor === 0) return { ...base, vacation: true, slots: [] };
 
@@ -714,18 +752,27 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
     // הנושאים הפעילים בשבוע, לפי סדר המפרט (פריסת scheduleTopics).
     const activeST = plan.scheduledTopics.filter((st) => st.startWeek <= w.week && w.week <= st.endWeek);
     const topics = activeST.map((st) => st.topic.name);
-    // מיפוי נושא -> תתי-הנושא הרשמיים (הרחבה/רשות) שלו, לתצוגה בגאנט.
+    // מיפוי נושא -> תתי-הנושא הרשמיים שלו, לתצוגה בגאנט: קודם הליבה (חובה), אחר כך הרחבה/רשות.
+    // הליבה מגיעה מ-coreSubtopics (חולצה מהמפרט ואומתה מילה-במילה), או מ-topic.core אם הוגדר.
+    const coreForGrade = coreSubtopics[plan.grade] ?? {};
     const optByTopic = new Map<string, { name: string; level: string }[]>(
-      activeST.map((st) => [st.topic.name, (st.topic.optional ?? []).map((o) => ({ name: o.name, level: o.level }))]),
+      activeST.map((st) => [st.topic.name, [
+        ...((st.topic.core ?? coreForGrade[st.topic.name] ?? [])).map((n) => ({ name: n, level: 'חובה' })),
+        ...(st.topic.optional ?? []).map((o) => ({ name: o.name, level: o.level as string })),
+      ]]),
     );
 
-    // "אירועי שיעור" שתופסים שיעור בשבוע: משימות מודל, אבני דרך חקר, מבחנים.
+    // "אירועי שיעור" שתופסים שיעור בשבוע: משימות מודל, מבחנים, ובכיתה ט' - שיעור חקר.
+    // אבני דרך החקר (הגשות/ירידים) אינן כאן - הן תזכורות בלבד (reminders), לא שיעור.
     type Special = { label: string; kind: SlotAssignment['kind']; taskType?: string; detail?: string; isAssessment?: boolean };
     const specials: Special[] = [];
     for (const m of plan.modelTasks.filter((m) => inWeek(m.date)))
       specials.push({ label: m.task.name, kind: 'משימת מודל', taskType: m.task.type, detail: m.task.detail, isAssessment: m.task.isAssessment });
-    for (const r of plan.research.filter((m) => inWeek(m.date))) specials.push({ label: r.label, kind: 'חקר' });
     for (const x of plan.deadlines.filter((m) => m.kind === 'מבחן' && inWeek(m.date))) specials.push({ label: x.label, kind: 'מבחן' });
+    // כיתה ט': שבוע חקר - יום הוראה אחד (האחרון בשבוע) מוקדש לשיעור חקר.
+    if ((plan.researchWeeks ?? []).includes(w.week)) {
+      specials.push({ label: 'עבודה על עבודת החקר לקראת היריד', kind: 'חקר' });
+    }
 
     // התאריך של יום הוראה בשבוע = ההיסט מיום תחילת השבוע ליום-בשבוע המבוקש (0=ראשון).
     // בשבוע חלקי (שמתחיל/מסתיים באמצע) יום שאינו נופל בטווח השבוע -> null (אין שיעור).

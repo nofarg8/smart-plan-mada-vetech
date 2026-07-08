@@ -300,6 +300,13 @@ body {
 .modal-actions .btn { padding: 12px 26px; font-size: 15px; }
 .modal-ghost { font: 600 14px 'Rubik'; color: var(--muted); background: none; border: none; cursor: pointer; padding: 12px 16px; }
 .modal-ghost:hover { color: var(--teal); }
+/* כפתור "להסתכל קודם על התוכנית" - משני אך בולט (מסגרת teal מלאה) */
+.modal-secondary {
+  font: 700 15px 'Rubik'; color: var(--teal); background: var(--teal-tint);
+  border: 2px solid var(--teal); border-radius: 12px; padding: 12px 24px; cursor: pointer;
+  transition: background .15s ease, transform .1s ease;
+}
+.modal-secondary:hover { background: var(--teal-tint-2); transform: translateY(-1px); }
 .modal-close { padding: 11px 30px; font-size: 15px; }
 .modal-badge { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
 .modal-badge.ok { background: var(--success-tint); }
@@ -400,13 +407,16 @@ body {
 .mchip.init.sug, .mchip.sci { background: #eef2f6; color: #4a5a6a; }
 .mchip.init.reg { background: var(--success-tint); color: var(--success); }
 .mchip.sci { background: #eaf1f9; color: #3066a6; }
-/* תג "מזכירים"/"הצעה" בתוך הצ'יפ */
+/* תזכורת חקר (הגשה/יריד) - נבדלת ויזואלית משיעור חקר: מקווקוות, לא ממולאת */
+.mchip.reminder { background: #fff; color: var(--success); border: 1.5px dashed var(--success); }
+/* תג "מזכירים"/"הצעה"/"תזכורת" בתוך הצ'יפ */
 .chip-tag {
   font: 700 9.5px 'Rubik'; padding: 0 6px; border-radius: 999px; margin-inline-end: 5px;
   background: rgba(255, 255, 255, 0.75);
 }
 .mchip.reg .chip-tag { color: var(--success); }
 .mchip.sug .chip-tag, .mchip.sci .chip-tag { color: var(--mustard-text); }
+.mchip.reminder .chip-tag { color: #fff; background: var(--success); }
 
 /* ----- הפריסה השבועית (הלב) ----- */
 .weekly-plan {
@@ -529,6 +539,7 @@ body {
 .slot-subs.open { display: flex; }
 .slot-sub { font: 400 12px/1.4 'Rubik'; color: var(--muted); display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
 .sub-lvl { font: 700 10px 'Rubik'; padding: 0 6px; border-radius: 999px; flex: 0 0 auto; }
+.sub-lvl.core { color: #fff; background: var(--teal); border: 1px solid var(--teal); }
 .sub-lvl.exp { color: #3066a6; background: #eaf1f9; border: 1px solid #d3e2f2; }
 .sub-lvl.opt { color: var(--muted); background: #f1efe8; border: 1px solid var(--card-border); }
 .slot.topic { border-inline-start-color: var(--teal); }
@@ -553,6 +564,24 @@ body {
 .adjust.done { background: var(--success-tint); border-color: #cfe6da; }
 .adjust-title { font: 700 18px 'Rubik'; color: var(--heading); margin-bottom: 5px; }
 .adjust-intro { font: 400 14px/1.55 'Rubik'; color: var(--body-text); }
+/* עמוד הצמצום: מצב + שתי נקודות מודגשות (במקום פסקה ארוכה שהמורות פספסו) */
+.adjust-gap-big {
+  font: 800 20px 'Rubik'; color: var(--error-2); margin: 2px 0 12px;
+}
+.adjust-points { display: flex; flex-direction: column; gap: 9px; }
+.adjust-point {
+  display: flex; align-items: flex-start; gap: 10px;
+  font: 500 14px/1.5 'Rubik'; color: var(--body-text);
+  background: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 11px 14px;
+}
+.adjust-point.warn { border: 2px solid var(--error-border); background: var(--error-tint); }
+.adjust-point b { font-weight: 800; }
+.ap-mark {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font: 800 13px 'Rubik'; color: #fff; background: var(--error-2);
+}
+.ap-mark.ok { background: var(--teal); }
 .adjust-meter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0 16px; }
 .am-track {
   flex: 1 1 220px; height: 9px; border-radius: 999px; background: #efe4cd; overflow: hidden;
@@ -584,8 +613,9 @@ body {
   background: #fff; border: 1px solid var(--card-border); border-radius: 9px; cursor: pointer;
 }
 .ad-topic input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--teal); cursor: pointer; }
-.ad-topic.off { background: #f4f1ea; border-color: var(--card-border-2); }
-.ad-topic.off .adt-name { text-decoration: line-through; color: var(--muted-2); }
+/* נושא מסומן לצמצום - בולט מאוד, כדי שהמורה תבין שהוא יורד מהתוכנית */
+.ad-topic.off { background: var(--error-tint); border: 2px solid var(--error-border); }
+.ad-topic.off .adt-name { text-decoration: line-through; color: var(--error-2); }
 .adt-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .adt-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .adt-name { font: 600 14px 'Rubik'; color: var(--heading-2); }
@@ -595,8 +625,8 @@ body {
   border: 1px solid var(--mustard-tint-2); padding: 1px 8px; border-radius: 999px;
 }
 .adt-off {
-  font: 600 11px 'Rubik'; color: var(--error-2); background: var(--error-tint);
-  border: 1px solid var(--error-border); padding: 1px 8px; border-radius: 999px;
+  font: 800 11.5px 'Rubik'; color: #fff; background: var(--error-2);
+  border: 1px solid var(--error-2); padding: 2px 10px; border-radius: 999px;
 }
 .adt-opt { font: 400 12px/1.45 'Rubik'; color: var(--muted-2); }
 
@@ -963,6 +993,24 @@ body {
   cursor: pointer; text-decoration: underline; text-align: center;
 }
 .coord-link:hover { color: var(--teal-2); }
+
+/* כניסת רכזת - כרטיס מובחן במסך הפתיחה */
+.coord-cta {
+  display: flex; align-items: center; gap: 13px; width: 100%; margin-top: 18px;
+  padding: 14px 16px; cursor: pointer; text-align: right;
+  background: var(--teal-tint); border: 1.5px solid var(--teal-tint-2); border-radius: 14px;
+  transition: background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.coord-cta:hover { background: var(--teal-tint-2); border-color: var(--teal); transform: translateY(-1px); }
+.cc-icon {
+  flex: 0 0 auto; width: 42px; height: 42px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; background: var(--teal);
+}
+.cc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cc-title { font: 700 15px 'Rubik'; color: var(--teal); }
+.cc-sub { font: 400 12.5px/1.4 'Rubik'; color: var(--muted); }
+.cc-arrow { flex: 0 0 auto; font: 700 22px 'Rubik'; color: var(--teal-2); line-height: 1; }
 .login-card.wide { max-width: 720px; }
 .coord-list { display: flex; flex-direction: column; gap: 12px; margin: 14px 0 6px; }
 .coord-teacher {

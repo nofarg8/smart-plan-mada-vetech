@@ -323,7 +323,8 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
       var it = items[x];
       var st = it.start ? (it.start.date || String(it.start.dateTime || '').slice(0, 10)) : '';
       var en = it.end ? (it.end.date || String(it.end.dateTime || '').slice(0, 10)) : '';
-      var sig = String(it.summary || '') + '|' + st + '|' + en;
+      // החתימה כוללת גם את התיאור, כך שעדכון פירוט תתי-הנושא מזוהה כשינוי ומסונכרן.
+      var sig = String(it.summary || '') + '|' + st + '|' + en + '|' + String(it.description || '');
       if (!existing[sig]) existing[sig] = [];
       existing[sig].push(it.id);
     }
@@ -341,7 +342,8 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
     var title = String(ev.title || '').trim();
     if (!title || !isoRe.test(String(ev.start))) continue;
     var endDate = (isoRe.test(String(ev.end)) && String(ev.end) > String(ev.start)) ? String(ev.end) : nextIso_(ev.start);
-    var wantSig = title + '|' + String(ev.start) + '|' + endDate;
+    var desc = String(ev.description || '');
+    var wantSig = title + '|' + String(ev.start) + '|' + endDate + '|' + desc;
     if (existing[wantSig] && existing[wantSig].length) {
       existing[wantSig].shift(); // האירוע כבר ביומן, בלי שינוי - נשאר
       kept++;
@@ -349,6 +351,7 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
     }
     var colorId = colorFor_(ev.category);
     var resource = { summary: title, start: { date: String(ev.start) }, end: { date: endDate } };
+    if (desc) resource.description = desc;
     if (colorId) resource.colorId = colorId;
     try {
       Calendar.Events.insert(resource, calId);
@@ -357,7 +360,8 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
     } catch (insErr) {
       try {
         var s = parseYmd_(ev.start), e = parseYmd_(endDate);
-        if (e && e.getTime() > s.getTime()) cal.createAllDayEvent(title, s, e); else cal.createAllDayEvent(title, s);
+        var created = (e && e.getTime() > s.getTime()) ? cal.createAllDayEvent(title, s, e) : cal.createAllDayEvent(title, s);
+        if (desc && created) { try { created.setDescription(desc); } catch (dErr) {} }
         added++;
         if (colorId) colorErr++;
       } catch (e2) {}
@@ -451,8 +455,9 @@ function colorFor_(category) {
     case 'נושא': return '7';        // Peacock - טורקיז
     case 'משימת מודל': return '3';  // Grape - סגול
     case 'מבחן': return '5';        // Banana - צהוב
-    case 'חקר': return '10';        // Basil - ירוק
+    case 'חקר': return '10';        // Basil - ירוק (שיעור חקר)
     case 'יריד': return '10';       // Basil - ירוק
+    case 'תזכורת': return '2';      // Sage - ירוק בהיר (תזכורת חקר, נבדל משיעור חקר)
     case 'יוזמה': return '9';       // Blueberry - כחול
     case 'חופשה': return '4';       // Flamingo - אדום בהיר
     default: return '';

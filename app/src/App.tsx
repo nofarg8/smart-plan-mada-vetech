@@ -332,8 +332,20 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
             </button>
           </form>
 
-          <button className="coord-link" onClick={onCoord}>
-            רכז/ת? לצפייה בתוכניות של צוות בית הספר
+          {/* כניסת רכזת - כרטיס מובחן, כדי שהרכזות ישימו לב שיש להן מסך משלהן */}
+          <button className="coord-cta" onClick={onCoord}>
+            <span className="cc-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </span>
+            <span className="cc-text">
+              <span className="cc-title">רכזת מדע וטכנולוגיה?</span>
+              <span className="cc-sub">כל תוכניות העבודה של הצוות שלך - במקום אחד</span>
+            </span>
+            <span className="cc-arrow" aria-hidden="true">‹</span>
           </button>
 
           {DEBUG_ENTRY && (
@@ -945,7 +957,7 @@ function WeekRow({ week, expandAll, school, onOverride }: {
                         <span className={`slot-subs ${openSubs.has(i) ? 'open' : ''}`}>
                           {sl.subItems.map((si, k) => (
                             <span key={k} className="slot-sub">
-                              <span className={`sub-lvl ${si.level === 'הרחבה' ? 'exp' : 'opt'}`}>{si.level}</span>
+                              <span className={`sub-lvl ${si.level === 'חובה' ? 'core' : si.level === 'הרחבה' ? 'exp' : 'opt'}`}>{si.level}</span>
                               {si.name}
                             </span>
                           ))}
@@ -956,9 +968,14 @@ function WeekRow({ week, expandAll, school, onOverride }: {
                 </div>
               ))}
             </div>
-            {(week.holidays.length > 0 || week.initiatives.length > 0 || week.scienceDays.length > 0) && (
+            {(week.holidays.length > 0 || week.initiatives.length > 0 || week.scienceDays.length > 0 || week.reminders.length > 0) && (
               <div className="wk-ctx">
                 {week.holidays.map((h) => <span key={h} className="mchip event">{h}</span>)}
+                {week.reminders.map((r) => (
+                  <span key={r} className="mchip reminder">
+                    <span className="chip-tag">תזכורת</span>{r}
+                  </span>
+                ))}
                 {week.initiatives.map((ini) => {
                   const reg = isRegistered(ini.keywords, school);
                   return (
@@ -1207,9 +1224,17 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
             <>יש לך מספיק שעות לכל התוכנית המלאה - לא חייבים לצמצם דבר. אם בכל זאת תרצי לוותר על נושאים, סמני אותם ולחצי אישור - הם יירדו מהגאנט ומהיומן.</>
           ) : (
             <>
-              בשעות שלך השנה אפשר ללמד {plan.capacityHours} שעות, והתוכנית המלאה לפי משרד החינוך היא {fullCore} שעות - פער של {gap} שעות.
-              <br />
-              אפשר לבחור נושאים לצמצם, והמערכת מסמנת לך אילו הכי מתאימים (נושאים עם הרבה חומר רשות והרחבה, שאינו חובה). לא חובה לצמצם: אם תשאירי את הכול, כל הנושאים ייכנסו לתוכנית - אבל כל נושא יקבל מעט פחות זמן ממה שכתוב בתוכנית הלימודים של משרד החינוך.
+              {!covered && <div className="adjust-gap-big">חסרות לך {remaining} שעות</div>}
+              <div className="adjust-points">
+                <div className="adjust-point warn">
+                  <span className="ap-mark">✔</span>
+                  <span>נושא שתסמני כאן <b>יירד מהתוכנית שלך</b> - לא יופיע בגאנט, ב-PDF וביומן.</span>
+                </div>
+                <div className="adjust-point">
+                  <span className="ap-mark ok">✓</span>
+                  <span><b>לא חייבת לצמצם.</b> אם תשאירי הכול, כל הנושאים יישארו בתוכנית - פשוט יידחסו, וכל נושא יקבל מעט פחות זמן.</span>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -1250,7 +1275,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
                         <span className="adt-hours">{t.hours} ש'</span>
                         {grade !== 9 && <span className="adt-cls core">חובה</span>}
                         {nOpt > 0 && !sel && <span className="adt-rec">מועדף לצמצום</span>}
-                        {sel && <span className="adt-off">מסומן לצמצום</span>}
+                        {sel && <span className="adt-off">יורד מהתוכנית שלך</span>}
                       </span>
                       {nOpt > 0 ? (
                         <>
@@ -1374,6 +1399,8 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   const [expandAll, setExpandAll] = useState(false);
   // סיום והפקה בלחיצה אחת: PDF + קלנדר למורה, ועותקים לתיקייה שלנו ולרכז/ת.
   const pageRef = useRef<HTMLDivElement>(null);
+  // ראש התוכנית - כדי לגלול אליו כשהמורה בוחרת "להסתכל קודם על התוכנית".
+  const titleRef = useRef<HTMLDivElement>(null);
   const [delivery, setDelivery] = useState<{ status: 'idle' | 'working' | 'done' | 'error'; msg?: string }>({ status: 'idle' });
   // חלון הייצוא הקופץ - נפתח מכפתור הסיום (בכותרת או בתחתית), ומרכז את פעולת ההפקה.
   const [showExport, setShowExport] = useState(false);
@@ -1470,7 +1497,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
   }, [session, grade, scheduleKey, appliedKey, klass, eventsKey, overridesKey, orderKey, step]);
 
   const { plan, months, weekly } = useMemo(() => {
-    const p = buildPlan({ grade, weeklyHours, droppedTopics: Array.from(applied), topicOrder: grade === 9 ? topicOrder : undefined });
+    const p = buildPlan({ grade, weeklyHours, droppedTopics: Array.from(applied), topicOrder: grade === 9 ? topicOrder : undefined, teachingDays: slots.length });
     const rawWeekly = buildWeeklySchedule(p, slots, customEvents);
     // החלת עריכות ידניות: שיעור נושא שהמורה שינתה מקבל את הטקסט שלה.
     const weeklyEdited = rawWeekly.map((w) => ({
@@ -1570,7 +1597,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
 
       <div style={{ height: 18 }} />
 
-      <div className="title-row">
+      <div className="title-row" ref={titleRef}>
         <div>
           <h2>תוכנית עבודה שנתית · מדע וטכנולוגיה</h2>
           <p className="sub">{GRADE_LABEL[grade]}{klass.trim() ? ` (${klass.trim()})` : ''} · {plan.weeklyHours} ש"ש · {session.teacherName} · {session.school.schoolName} · תשפ"ז</p>
@@ -1679,7 +1706,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
               <p className="modal-note">אם הכתובת לא נכונה - לחצי "יציאה" למעלה והיכנסי שוב עם הכתובת הנכונה.</p>
               <div className="modal-actions">
                 <button className="btn btn-pr" onClick={doFinalize}><IconDownload />הפיקי עכשיו</button>
-                <button className="modal-ghost" onClick={() => setShowExport(false)}>לא עכשיו</button>
+                <button className="btn modal-secondary" onClick={() => { setShowExport(false); setTimeout(() => titleRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60); }}>👀 להסתכל קודם על התוכנית שהתקבלה</button>
               </div>
             </>
           )}

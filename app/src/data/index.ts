@@ -9,8 +9,10 @@ import { officialHolidays } from './holidays';
 import { fetchLiveGantt } from './liveGantt';
 import { type SchoolStatus } from './mockStatus';
 import { fetchSchool } from './statusApi';
+import { coreSubtopics } from './coreSubtopics';
 
 export * from './types';
+export { coreSubtopics };
 export { grade7, grade8, grade9, modelTasksGrade7, modelTasksGrade8, grade8ModelTaskCount };
 export { ganttWeeks, teachingWeeks, setLiveGantt };
 export { initiatives };
