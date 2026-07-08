@@ -52,10 +52,11 @@ function doPost(e) {
     for (var k in answers) { qs.push(k); vals.push(String(answers[k] || '')); }
     if (isBug) { qs.push('דפדפן (אוטומטי)'); vals.push(String(p.userAgent || '')); }
 
-    appendRow_(isBug ? 'דיווח תקלות' : 'משוב', GENERAL_HEADERS.concat(qs), general.concat(vals));
+    var ss = getSpreadsheet_();
+    appendRow_(ss, isBug ? 'דיווח תקלות' : 'משוב', GENERAL_HEADERS.concat(qs), general.concat(vals));
 
     if (isBug) {
-      try { notifyBug_(p, when); } catch (mailErr) {}
+      try { notifyBug_(p, when, ss); } catch (mailErr) {}
     }
     return json_({ ok: true });
   } catch (err) {
@@ -67,10 +68,29 @@ function doGet() {
   return json_({ ok: true, service: 'feedback' });
 }
 
-/** מאתר/יוצר את הגיליון ואת הלשונית, מוודא שורת כותרות, ומוסיף שורה. */
-function appendRow_(sheetName, headers, row) {
+/** מאתר/יוצר את קובץ הגיליון, ומוודא ששתי הלשוניות (משוב + דיווח תקלות) קיימות. */
+function getSpreadsheet_() {
   var it = DriveApp.getFilesByName(FEEDBACK_SPREADSHEET_NAME);
   var ss = it.hasNext() ? SpreadsheetApp.open(it.next()) : SpreadsheetApp.create(FEEDBACK_SPREADSHEET_NAME);
+  // שתי הלשוניות נוצרות מראש - כדי שהלינקים אליהן במייל ההתראה יעבדו תמיד.
+  if (!ss.getSheetByName('דיווח תקלות')) ss.insertSheet('דיווח תקלות');
+  if (!ss.getSheetByName('משוב')) ss.insertSheet('משוב');
+  // מוחקים את לשונית ברירת המחדל הריקה של גיליון חדש.
+  var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
+  if (def && ss.getSheets().length > 1 && def.getLastRow() === 0) {
+    try { ss.deleteSheet(def); } catch (e) {}
+  }
+  return ss;
+}
+
+/** לינק ישיר ללשונית בתוך הגיליון. */
+function tabUrl_(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
+  return sheet ? (ss.getUrl() + '#gid=' + sheet.getSheetId()) : ss.getUrl();
+}
+
+/** מוודא שורת כותרות בלשונית ומוסיף שורה. */
+function appendRow_(ss, sheetName, headers, row) {
   var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
   if (sheet.getLastRow() === 0) {
     sheet.setRightToLeft(true);
@@ -79,20 +99,17 @@ function appendRow_(sheetName, headers, row) {
     sheet.setFrozenRows(1);
   }
   sheet.appendRow(row);
-  // מוחקים את לשונית ברירת המחדל הריקה של גיליון חדש.
-  var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('גיליון1');
-  if (def && ss.getSheets().length > 1 && def.getLastRow() === 0) {
-    try { ss.deleteSheet(def); } catch (e) {}
-  }
 }
 
-/** מייל התראה מיידי על דיווח תקלה. */
-function notifyBug_(p, when) {
+/** מייל התראה מיידי על דיווח תקלה, כולל לינקים ללשוניות התקלות והמשובים. */
+function notifyBug_(p, when, ss) {
   var answers = p.answers || {};
   var lines = '';
   for (var k in answers) {
     lines += '<b>' + k + ':</b> ' + String(answers[k] || '') + '<br>';
   }
+  var bugsUrl = tabUrl_(ss, 'דיווח תקלות');
+  var feedbackUrl = tabUrl_(ss, 'משוב');
   MailApp.sendEmail({
     to: NOTIFY_EMAIL,
     subject: 'תקלה חדשה בתומכת ההוראה - ' + String(p.name || '') + ' (' + String(p.school || '') + ')',
@@ -105,9 +122,12 @@ function notifyBug_(p, when) {
       '<b>אימייל:</b> ' + String(p.email || '') + '<br>' +
       '<b>נייד:</b> ' + String(p.phone || '') + '<br><br>' +
       lines + '<br>' +
-      '<b>דפדפן (אוטומטי):</b> ' + String(p.userAgent || '') +
+      '<b>דפדפן (אוטומטי):</b> ' + String(p.userAgent || '') + '<br><br>' +
+      '<b>כל הדיווחים במקום אחד:</b><br>' +
+      '• <a href="' + bugsUrl + '">גיליון דיווחי התקלות</a><br>' +
+      '• <a href="' + feedbackUrl + '">גיליון המשובים</a>' +
       '</div>',
-    body: 'התקבל דיווח תקלה חדש מ-' + String(p.name || '') + ' (' + String(p.school || '') + '). הפרטים בגיליון: ' + FEEDBACK_SPREADSHEET_NAME
+    body: 'התקבל דיווח תקלה חדש מ-' + String(p.name || '') + ' (' + String(p.school || '') + '). כל הדיווחים: ' + bugsUrl
   });
 }
 
