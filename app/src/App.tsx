@@ -62,6 +62,34 @@ function writeSavedState(s: SavedState | null): void {
   }
 }
 
+// ===== היסטוריית טופס הכניסה - השלמות תוך כדי הקלדה, כמו השלמת אימייל בדפדפן =====
+// נשמר מקומית בדפדפן של המורה בלבד; מוצג כרשימת הצעות (datalist) מתחת לכל שדה.
+const LOGIN_HISTORY_KEY = 'tomehet-login-history-v1';
+interface LoginHistory { names: string[]; emails: string[]; semels: string[]; rakaz: string[] }
+function loadLoginHistory(): LoginHistory {
+  try {
+    const h = JSON.parse(localStorage.getItem(LOGIN_HISTORY_KEY) || '{}') as Partial<LoginHistory>;
+    return { names: h.names ?? [], emails: h.emails ?? [], semels: h.semels ?? [], rakaz: h.rakaz ?? [] };
+  } catch {
+    return { names: [], emails: [], semels: [], rakaz: [] };
+  }
+}
+function rememberLogin(entry: { name?: string; email?: string; semel?: string; rakaz?: string }): void {
+  try {
+    const h = loadLoginHistory();
+    const push = (list: string[], v?: string) =>
+      v && v.trim() ? [v.trim(), ...list.filter((x) => x !== v.trim())].slice(0, 8) : list;
+    localStorage.setItem(LOGIN_HISTORY_KEY, JSON.stringify({
+      names: push(h.names, entry.name),
+      emails: push(h.emails, entry.email),
+      semels: push(h.semels, entry.semel),
+      rakaz: push(h.rakaz, entry.rakaz),
+    }));
+  } catch {
+    /* אחסון חסום בדפדפן - בלי היסטוריה */
+  }
+}
+
 const GRADE_LABEL: Record<Grade, string> = { 7: 'כיתה ז׳', 8: 'כיתה ח׳', 9: 'כיתה ט׳' };
 const GRADE_LETTER: Record<Grade, string> = { 7: 'ז', 8: 'ח', 9: 'ט' };
 const GRADES: Grade[] = [7, 8, 9];
@@ -161,13 +189,21 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const STATUS_FORM_URL = 'https://nofarg8.github.io/STATUS-MADATECH/';
 
 function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCoord: () => void }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [semel, setSemel] = useState('');
-  const [rakazEmail, setRakazEmail] = useState('');
+  // היסטוריית כניסות קודמות מהדפדפן הזה - ממלאת מראש ומציעה השלמות בהקלדה.
+  const hist = useMemo(loadLoginHistory, []);
+  const [name, setName] = useState(hist.names[0] ?? '');
+  const [email, setEmail] = useState(hist.emails[0] ?? '');
+  const [semel, setSemel] = useState(hist.semels[0] ?? '');
+  const [rakazEmail, setRakazEmail] = useState(hist.rakaz[0] ?? '');
   const [error, setError] = useState<ReactNode>('');
   const [checking, setChecking] = useState(false);
   const [found, setFound] = useState<SchoolStatus | null>(null);
+  // סמל שמולא מראש מההיסטוריה - מציגים את שם בית הספר מיד (כמו בהקלדה).
+  useEffect(() => {
+    const digits = (hist.semels[0] ?? '').replace(/\D/g, '');
+    if (digits.length >= 5) fetchSchool(digits).then(setFound);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // שליפת פרטי בית הספר לפי סמל מוסד בזמן הקלדה (תצוגה מקדימה).
   const onSemel = (v: string) => {
@@ -243,6 +279,8 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
       );
       return;
     }
+    // כניסה מוצלחת - נשמרת להשלמות בכניסה הבאה (בדפדפן הזה בלבד).
+    rememberLogin({ name, email, semel, rakaz: rakazEmail });
     onEnter({ teacherName: name.trim(), teacherEmail: email.trim(), school });
   };
 
@@ -254,38 +292,45 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
           <h2>כמה פרטים ונתחיל</h2>
           <p className="login-sub">נשתמש בהם כדי לשלוף את פרטי בית הספר שלך ולבנות תוכנית אישית.</p>
 
-          <div className="field">
-            <label className="flab">שם מלא</label>
-            <input className="inp" value={name} onChange={(e) => setName(e.target.value)} placeholder="שם פרטי ושם משפחה" />
-          </div>
+          {/* טופס אמיתי: Enter שולח, והדפדפן + רשימות ההיסטוריה מציעים השלמות בהקלדה. */}
+          <form onSubmit={(e) => { e.preventDefault(); submit(); }}>
+            <div className="field">
+              <label className="flab">שם מלא</label>
+              <input className="inp" name="teacher-name" autoComplete="name" list="hist-names" value={name} onChange={(e) => setName(e.target.value)} placeholder="שם פרטי ושם משפחה" />
+              <datalist id="hist-names">{hist.names.map((v) => <option key={v} value={v} />)}</datalist>
+            </div>
 
-          <div className="field">
-            <label className="flab">אימייל</label>
-            <input className="inp" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" />
-          </div>
+            <div className="field">
+              <label className="flab">אימייל</label>
+              <input className="inp" type="email" name="teacher-email" autoComplete="email" list="hist-emails" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" />
+              <datalist id="hist-emails">{hist.emails.map((v) => <option key={v} value={v} />)}</datalist>
+            </div>
 
-          <div className="field">
-            <label className="flab">סמל מוסד</label>
-            <input className="inp" value={semel} onChange={(e) => onSemel(e.target.value)} placeholder="סמל בית הספר" />
-            {found && (
-              <div className="found-row">
-                <IconCheck />
-                <span>{found.schoolName}</span>
-                <span className="found-note">פרטי בית הספר נמצאו</span>
-              </div>
-            )}
-          </div>
+            <div className="field">
+              <label className="flab">סמל מוסד</label>
+              <input className="inp" name="school-semel" inputMode="numeric" autoComplete="on" list="hist-semels" value={semel} onChange={(e) => onSemel(e.target.value)} placeholder="סמל בית הספר" />
+              <datalist id="hist-semels">{hist.semels.map((v) => <option key={v} value={v} />)}</datalist>
+              {found && (
+                <div className="found-row">
+                  <IconCheck />
+                  <span>{found.schoolName}</span>
+                  <span className="found-note">פרטי בית הספר נמצאו</span>
+                </div>
+              )}
+            </div>
 
-          <div className="field">
-            <label className="flab">אימייל הרכז/ת</label>
-            <input className="inp" value={rakazEmail} onChange={(e) => setRakazEmail(e.target.value)} placeholder="אימייל הרכז/ת" />
-          </div>
+            <div className="field">
+              <label className="flab">אימייל הרכז/ת</label>
+              <input className="inp" type="email" name="coordinator-email" autoComplete="email" list="hist-rakaz" value={rakazEmail} onChange={(e) => setRakazEmail(e.target.value)} placeholder="אימייל הרכז/ת" />
+              <datalist id="hist-rakaz">{hist.rakaz.map((v) => <option key={v} value={v} />)}</datalist>
+            </div>
 
-          {error && <div className="login-err"><IconAlert color="#c2603f" />{error}</div>}
+            {error && <div className="login-err"><IconAlert color="#c2603f" />{error}</div>}
 
-          <button className="btn btn-pr login-btn" onClick={submit} disabled={checking}>
-            {checking ? 'בודקת את פרטי בית הספר...' : 'המשך'}
-          </button>
+            <button type="submit" className="btn btn-pr login-btn" disabled={checking}>
+              {checking ? 'בודקת את פרטי בית הספר...' : 'המשך'}
+            </button>
+          </form>
 
           <button className="coord-link" onClick={onCoord}>
             רכז/ת? לצפייה בתוכניות של צוות בית הספר
@@ -304,8 +349,10 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
 
 /* ---------- תצוגת רכז/ת: כל התוכניות של צוות בית הספר ---------- */
 function CoordinatorScreen({ onBack }: { onBack: () => void }) {
-  const [email, setEmail] = useState('');
-  const [semel, setSemel] = useState('');
+  // היסטוריית כניסות קודמות - מילוי מראש והשלמות, כמו במסך המורה.
+  const hist = useMemo(loadLoginHistory, []);
+  const [email, setEmail] = useState(hist.rakaz[0] ?? '');
+  const [semel, setSemel] = useState(hist.semels[0] ?? '');
   const [error, setError] = useState<ReactNode>('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<{ school: string; files: SchoolPlanFile[] } | null>(null);
@@ -349,6 +396,8 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
         setError(r.error || 'לא הצלחנו לקרוא את התוכניות. נסי שוב.');
         return;
       }
+      // כניסה מוצלחת - נשמרת להשלמות בכניסה הבאה (בדפדפן הזה בלבד).
+      rememberLogin({ semel, rakaz: email });
       setData({ school: school.schoolName, files: r.files ?? [] });
     } finally {
       setLoading(false);
@@ -392,18 +441,22 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
             <>
               <h2>כניסת רכז/ת</h2>
               <p className="login-sub">צפייה בכל תוכניות העבודה שמורות הצוות שלך הפיקו - במקום אחד.</p>
-              <div className="field">
-                <label className="flab">אימייל הרכז/ת (כפי שמופיע בפרטי בית הספר)</label>
-                <input className="inp" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" />
-              </div>
-              <div className="field">
-                <label className="flab">סמל מוסד</label>
-                <input className="inp" value={semel} onChange={(e) => setSemel(e.target.value)} placeholder="סמל בית הספר" />
-              </div>
-              {error && <div className="login-err"><IconAlert color="#c2603f" />{error}</div>}
-              <button className="btn btn-pr login-btn" onClick={enter} disabled={loading}>
-                {loading ? 'בודקת...' : 'כניסה'}
-              </button>
+              <form onSubmit={(e) => { e.preventDefault(); enter(); }}>
+                <div className="field">
+                  <label className="flab">אימייל הרכז/ת (כפי שמופיע בפרטי בית הספר)</label>
+                  <input className="inp" type="email" name="coordinator-email" autoComplete="email" list="hist-coord-emails" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" />
+                  <datalist id="hist-coord-emails">{hist.rakaz.map((v) => <option key={v} value={v} />)}</datalist>
+                </div>
+                <div className="field">
+                  <label className="flab">סמל מוסד</label>
+                  <input className="inp" name="school-semel" inputMode="numeric" autoComplete="on" list="hist-coord-semels" value={semel} onChange={(e) => setSemel(e.target.value)} placeholder="סמל בית הספר" />
+                  <datalist id="hist-coord-semels">{hist.semels.map((v) => <option key={v} value={v} />)}</datalist>
+                </div>
+                {error && <div className="login-err"><IconAlert color="#c2603f" />{error}</div>}
+                <button type="submit" className="btn btn-pr login-btn" disabled={loading}>
+                  {loading ? 'בודקת...' : 'כניסה'}
+                </button>
+              </form>
               <button className="coord-link" onClick={onBack}>חזרה לכניסת מורה</button>
             </>
           ) : (
