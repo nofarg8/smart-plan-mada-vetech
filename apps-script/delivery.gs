@@ -4,11 +4,12 @@
  *
  * בכל מסירה (action = 'deliverPlan'):
  *   1. תת-תיקייה "שם ביה"ס - סמל מוסד" בתוך התיקייה הראשית ששיתפת -> שומר PDF + קלנדר.
- *   2. יוצר/מעדכן יומן אישי למורה, ממלא אותו באירועי התוכנית, ומשתף עם המורה
- *      (מופיע לבד בגוגל קלנדר, בלי ייבוא). בעדכון - מנקה ובונה מחדש את אותו יומן.
- *   3. שולח למורה מייל עם הגאנט (PDF) + קובץ היומן (.ics) לצירוף אישי ליומן שלה.
- *   4. שולח לרכז/ת עותק קלנדר במייל.
- *   5. רושם חריגות (מול הסטטוס / מול שעות משרד החינוך) לגיליון אחד בתיקיית האם.
+ *   2. רושם חריגות (מול הסטטוס / מול שעות משרד החינוך) לגיליון אחד בתיקיית האם.
+ *   3. שולח למורה מייל עם הגאנט (PDF) + קובץ היומן (.ics), עם ציון הכיתה ומועד העדכון.
+ *   4. שולח לרכז/ת עותק במייל (PDF + ics), עם ציון הכיתה ומועד העדכון.
+ *   5. יוצר/מעדכן יומן אישי למורה (אחרון - כי זה הצעד הארוך), ממלא אותו באירועי
+ *      התוכנית, ומשתף עם המורה. היומן מזוהה לפי מפתח כיתה שנשמר בתיאור היומן
+ *      (סמל+כיתה+מייל) - עדכון חוזר מעדכן את אותו יומן, לא יוצר חדש; כפילויות נמחקות.
  *
  * תצוגת רכז/ת (action = 'listPlans'): מחזיר את רשימת התוצרים של בית הספר לפי סמל מוסד.
  *
@@ -83,14 +84,12 @@ function deliverPlan_(p) {
     out.files.ics = ics.getUrl();
   }
 
-  // יומן אישי למורה - נוצר, מתמלא, ומשותף (מופיע לבד). תקלה כאן לא חוסמת את השאר.
-  if (p.teacherEmail && p.events && p.events.length && p.calendarName) {
-    try {
-      out.calendar = syncCalendar_(String(p.calendarName), p.events, String(p.teacherEmail), String(p.coordinatorEmail || ''));
-    } catch (calErr) {
-      out.calendarError = String(calErr.message || calErr);
-    }
-  }
+  // תיאור התוכנית למיילים: איזו כיתה + מתי עודכנה (כדי שהרכזת והמורה יידעו על מה מדובר).
+  var planLabel = gradeLabel || 'תוכנית העבודה';
+  var when = Utilities.formatDate(new Date(), 'Asia/Jerusalem', 'dd/MM/yyyy HH:mm');
+
+  // המיילים נשלחים לפני בניית היומן (שאורכת דקות ועלולה להיעצר במגבלת זמן הריצה
+  // בעדכון חוזר) - כך המורה והרכז/ת מקבלים את המייל בכל מסירה, גם בעדכון.
 
   // מייל למורה: הגאנט (PDF) + קובץ היומן (.ics) לצירוף אישי ליומן שלה. תקלה כאן לא חוסמת.
   if (p.teacherEmail && (pdfBlob || icsBlob)) {
@@ -101,19 +100,19 @@ function deliverPlan_(p) {
       var calNote = p.calendarName ? ('היומן "' + String(p.calendarName) + '"') : 'היומן שלך';
       MailApp.sendEmail({
         to: String(p.teacherEmail).trim(),
-        subject: 'תוכנית העבודה השנתית שלך במדע וטכנולוגיה - ' + teacher,
+        subject: 'תוכנית העבודה השנתית שלך במדע וטכנולוגיה - ' + planLabel + ' - עודכן ' + when,
         htmlBody:
           '<div dir="rtl" style="text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#222">' +
           'שלום ' + teacher + ',<br><br>' +
-          'תוכנית העבודה השנתית שלך במדע וטכנולוגיה מוכנה.<br><br>' +
-          '<b>אין צורך להוריד או לייבא כלום:</b> ' + calNote + ' כבר משותף איתך ומופיע אוטומטית ביומן Google שלך (תחת "יומנים אחרים"), ומתעדכן לבד בכל עדכון של התוכנית.<br><br>' +
+          'תוכנית העבודה השנתית שלך במדע וטכנולוגיה עבור <b>' + planLabel + '</b> מוכנה (עודכנה ב-' + when + ').<br><br>' +
+          '<b>אין צורך להוריד או לייבא כלום:</b> ' + calNote + ' משותף איתך ויופיע ביומן Google שלך (תחת "יומנים אחרים") תוך כמה דקות, והוא מתעדכן לבד בכל עדכון של התוכנית.<br><br>' +
           '<b>מצורפים למייל:</b><br>' +
           '• הגאנט האישי שלך (PDF).<br>' +
-          '• קובץ יומן (.ics) לגיבוי בלבד - לא חובה, היומן כבר מופיע אצלך.<br><br>' +
-          '<b>לא רואה את היומן?</b> אם הוא לא הופיע אוטומטית, חפשי במייל שלך הודעה מ-Google על שיתוף היומן (בנושא שם היומן, או "ההרשאות ביומן השתנו") ולחצי בה על "הוסף". אפשר גם לפתוח את יומן Google שלך כאן ולראות את כל היומנים שלך: <a href="https://calendar.google.com/">calendar.google.com</a>.<br><br>' +
+          '• קובץ יומן (.ics) לגיבוי בלבד - לא חובה, היומן מופיע אצלך לבד.<br><br>' +
+          '<b>לא רואה את היומן?</b> אם הוא לא הופיע תוך כמה דקות, חפשי במייל שלך הודעה מ-Google על שיתוף היומן (בנושא שם היומן, או "ההרשאות ביומן השתנו") ולחצי בה על "הוסף". אפשר גם לפתוח את יומן Google שלך כאן ולראות את כל היומנים שלך: <a href="https://calendar.google.com/">calendar.google.com</a>.<br><br>' +
           'בהצלחה,<br>' + FROM_NAME +
           '</div>',
-        body: 'שלום ' + teacher + ', תוכנית העבודה שלך מוכנה. היומן כבר משותף איתך ומופיע אוטומטית ביומן Google. מצורפים הגאנט (PDF) וקובץ יומן לגיבוי.',
+        body: 'שלום ' + teacher + ', תוכנית העבודה שלך עבור ' + planLabel + ' מוכנה (עודכנה ב-' + when + '). היומן משותף איתך ויופיע ביומן Google תוך כמה דקות. מצורפים הגאנט (PDF) וקובץ יומן לגיבוי.',
         name: FROM_NAME,
         attachments: teacherAtts
       });
@@ -123,7 +122,7 @@ function deliverPlan_(p) {
     }
   }
 
-  // עותק לרכז/ת במייל: הגאנט (PDF) + קובץ היומן (.ics).
+  // עותק לרכז/ת במייל: הגאנט (PDF) + קובץ היומן (.ics), עם ציון הכיתה שעבורה הוגשה התוכנית.
   if (p.coordinatorEmail && (icsBlob || pdfBlob)) {
     try {
       var coordAtts = [];
@@ -131,24 +130,36 @@ function deliverPlan_(p) {
       if (icsBlob) coordAtts.push(icsBlob.copyBlob());
       MailApp.sendEmail({
         to: String(p.coordinatorEmail).trim(),
-        subject: 'תוכנית עבודה שנתית - ' + teacher + ' - ' + schoolName,
+        subject: 'תוכנית עבודה שנתית - ' + teacher + ' - ' + planLabel + ' - ' + schoolName + ' - עודכן ' + when,
         htmlBody:
           '<div dir="rtl" style="text-align:right;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.7;color:#222">' +
           'שלום,<br><br>' +
-          'מצורפת תוכנית העבודה השנתית במדע וטכנולוגיה של ' + teacher + ' (' + schoolName + '):<br>' +
+          'מצורפת תוכנית העבודה השנתית במדע וטכנולוגיה של <b>' + teacher + '</b> עבור <b>' + planLabel + '</b> (' + schoolName + '), עודכנה ב-' + when + ':<br>' +
           '• הגאנט (PDF).<br>' +
           '• קובץ היומן (.ics).<br><br>' +
-          'היומן של ' + teacher + ' משותף גם ישירות איתך ומופיע ביומן Google שלך.<br>' +
-          'אם הוא לא הופיע אוטומטית: חפשי במייל הודעה מ-Google על שיתוף היומן ולחצי בה "הוסף", או פתחי את יומן Google כאן: <a href="https://calendar.google.com/">calendar.google.com</a>.<br><br>' +
+          'היומן של ' + teacher + ' ל' + planLabel + ' משותף גם ישירות איתך ומופיע ביומן Google שלך.<br>' +
+          'אם הוא לא הופיע תוך כמה דקות: חפשי במייל הודעה מ-Google על שיתוף היומן ולחצי בה "הוסף", או פתחי את יומן Google כאן: <a href="https://calendar.google.com/">calendar.google.com</a>.<br><br>' +
           FROM_NAME +
           '</div>',
-        body: 'תוכנית העבודה של ' + teacher + ' (' + schoolName + '): הגאנט (PDF) וקובץ יומן (.ics) מצורפים. היומן משותף גם ישירות איתך.',
+        body: 'תוכנית העבודה של ' + teacher + ' עבור ' + planLabel + ' (' + schoolName + '), עודכנה ב-' + when + ': הגאנט (PDF) וקובץ יומן (.ics) מצורפים. היומן משותף גם ישירות איתך.',
         name: FROM_NAME,
         attachments: coordAtts
       });
       out.coordinatorEmailed = true;
     } catch (mailErr) {
       out.coordinatorEmailError = String(mailErr.message || mailErr);
+    }
+  }
+
+  // יומן אישי למורה - נוצר, מתמלא, ומשותף (מופיע לבד). תקלה כאן לא חוסמת את השאר.
+  // מזוהה לפי מפתח כיתה קבוע (סמל + כיתה + מייל המורה) - עדכון חוזר מעדכן את אותו
+  // יומן ולא יוצר חדש, גם אם שם היומן השתנה.
+  if (p.teacherEmail && p.events && p.events.length && p.calendarName) {
+    try {
+      var calKey = 'plan-key:' + schoolId + '|' + gradeLabel + '|' + String(p.teacherEmail).trim().toLowerCase();
+      out.calendar = syncCalendar_(String(p.calendarName), calKey, p.events, String(p.teacherEmail), String(p.coordinatorEmail || ''));
+    } catch (calErr) {
+      out.calendarError = String(calErr.message || calErr);
     }
   }
 
@@ -254,31 +265,88 @@ function authorizeNow() {
   try { DriveApp.getFileById(tmp.getId()).setTrashed(true); } catch (e) {}
 }
 
-/** יוצר/מעדכן יומן, ממלא אותו באירועים, ומשתף עם המורה (וגם עם הרכז). */
-function syncCalendar_(name, events, teacherEmail, coordinatorEmail) {
-  var cals = CalendarApp.getCalendarsByName(name);
-  var cal = cals.length ? cals[0] : CalendarApp.createCalendar(name, { color: CalendarApp.Color.BLUE });
-
-  // ניקוי אירועים קודמים בטווח שנת הלימודים -> בנייה מחדש, בלי כפילויות.
-  var from = new Date(2026, 7, 1); // אוגוסט 2026
-  var to = new Date(2027, 7, 31);  // אוגוסט 2027
-  var old = cal.getEvents(from, to);
-  for (var i = 0; i < old.length; i++) {
-    try { old[i].deleteEvent(); } catch (delErr) {}
+/**
+ * מאתר את יומן התוכנית של הכיתה: קודם לפי המפתח שבתיאור היומן (סמל+כיתה+מייל -
+ * עמיד לשינוי שם), ואם אין - לפי שם מדויק (אימוץ יומנים ישנים שטרם תויגו; יומן
+ * שכבר תויג במפתח אחר לא נחטף). מחזיר את כל ההתאמות - הראשון משמש, השאר כפילויות.
+ */
+function findPlanCalendars_(name, key) {
+  var owned = CalendarApp.getAllOwnedCalendars();
+  var byKey = [];
+  var byName = [];
+  for (var i = 0; i < owned.length; i++) {
+    var desc = '';
+    try { desc = String(owned[i].getDescription() || ''); } catch (e) {}
+    if (key && desc.indexOf(key) >= 0) byKey.push(owned[i]);
+    else if (desc.indexOf('plan-key:') < 0 && owned[i].getName() === name) byName.push(owned[i]);
   }
+  return byKey.length ? byKey.concat(byName) : byName;
+}
+
+/** יוצר/מעדכן יומן, ממלא אותו באירועים, ומשתף עם המורה (וגם עם הרכז). */
+function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
+  var matches = findPlanCalendars_(name, key);
+  var cal = matches.length ? matches[0] : CalendarApp.createCalendar(name, { color: CalendarApp.Color.BLUE });
+  // כפילויות (אותו מפתח או אותו שם) - נמחקות: לכיתה יש יומן אחד שמתעדכן.
+  var deduped = 0;
+  for (var dd = 1; dd < matches.length; dd++) {
+    try { matches[dd].deleteCalendar(); deduped++; } catch (ddErr) {}
+  }
+  // תיוג היומן במפתח הכיתה + יישור השם (אם המורה שינתה שם/כיתה - היומן נשאר, השם מתעדכן).
+  try { if (key) cal.setDescription(key); } catch (e1) {}
+  try { if (cal.getName() !== name) cal.setName(name); } catch (e2) {}
+
+  var calId = cal.getId();
+
+  // שיתוף (קריאה) עם המורה והרכז - קודם, כדי שהשיתוף לא ייפגע גם אם עדכון
+  // האירועים ייעצר במגבלת זמן הריצה. אידמפוטנטי (אם כבר משותף, נתפס ב-catch).
+  shareCalendar_(calId, teacherEmail);
+  if (coordinatorEmail) shareCalendar_(calId, coordinatorEmail);
+
+  // סנכרון-הפרש (במקום "מחק הכול ובנה מחדש"): קוראים את האירועים הקיימים בטווח
+  // השנה בקריאה אחת, משאירים אירועים שלא השתנו (כותרת+תאריכים), מוסיפים רק חדשים
+  // ומוחקים רק את מה שירד מהתוכנית. עדכון חוזר של אותה כיתה נהיה מהיר בסדר גודל -
+  // רחוק ממגבלת 6 הדקות של Apps Script (שגרמה למסירות חוזרות להיקטע באמצע).
+  var existing = {}; // חתימה "כותרת|התחלה|סוף" -> רשימת מזהי אירועים קיימים
+  var pageToken = null;
+  do {
+    var resp = Calendar.Events.list(calId, {
+      timeMin: '2026-08-01T00:00:00Z',
+      timeMax: '2027-08-31T00:00:00Z',
+      maxResults: 2500,
+      singleEvents: false,
+      showDeleted: false,
+      pageToken: pageToken
+    });
+    var items = resp.items || [];
+    for (var x = 0; x < items.length; x++) {
+      var it = items[x];
+      var st = it.start ? (it.start.date || String(it.start.dateTime || '').slice(0, 10)) : '';
+      var en = it.end ? (it.end.date || String(it.end.dateTime || '').slice(0, 10)) : '';
+      var sig = String(it.summary || '') + '|' + st + '|' + en;
+      if (!existing[sig]) existing[sig] = [];
+      existing[sig].push(it.id);
+    }
+    pageToken = resp.nextPageToken;
+  } while (pageToken);
 
   // הוספת אירועי התוכנית (יום-שלם; end בלעדי), עם צבע לפי קטגוריה.
   // צובעים דרך ה-API המתקדם (Calendar.Events.insert עם colorId) - זו השיטה שנתפסת אצל
   // גוגל (setColor לא עבד). אם ההוספה נכשלת - נפילה חזרה ל-createAllDayEvent (בלי צבע),
-  // כדי שהאירוע עדיין ייווצר. מחזירים ספירה של כמה נצבעו כדי שנוכל לוודא מהתשובה.
-  var calId = cal.getId();
+  // כדי שהאירוע עדיין ייווצר. מחזירים ספירות כדי שנוכל לוודא מהתשובה.
   var isoRe = /^\d{4}-\d{2}-\d{2}$/;
-  var added = 0, colored = 0, colorErr = 0;
+  var added = 0, kept = 0, colored = 0, colorErr = 0;
   for (var j = 0; j < events.length; j++) {
     var ev = events[j];
     var title = String(ev.title || '').trim();
     if (!title || !isoRe.test(String(ev.start))) continue;
     var endDate = (isoRe.test(String(ev.end)) && String(ev.end) > String(ev.start)) ? String(ev.end) : nextIso_(ev.start);
+    var wantSig = title + '|' + String(ev.start) + '|' + endDate;
+    if (existing[wantSig] && existing[wantSig].length) {
+      existing[wantSig].shift(); // האירוע כבר ביומן, בלי שינוי - נשאר
+      kept++;
+      continue;
+    }
     var colorId = colorFor_(ev.category);
     var resource = { summary: title, start: { date: String(ev.start) }, end: { date: endDate } };
     if (colorId) resource.colorId = colorId;
@@ -296,11 +364,16 @@ function syncCalendar_(name, events, teacherEmail, coordinatorEmail) {
     }
   }
 
-  // שיתוף (קריאה) עם המורה והרכז - אידמפוטנטי (אם כבר משותף, נתפס ב-catch).
-  shareCalendar_(cal.getId(), teacherEmail);
-  if (coordinatorEmail) shareCalendar_(cal.getId(), coordinatorEmail);
+  // מחיקת מה שנשאר ברשימת הקיימים: אירועים שירדו מהתוכנית + כפילויות ישנות.
+  var removed = 0;
+  for (var delSig in existing) {
+    var ids = existing[delSig];
+    for (var y = 0; y < ids.length; y++) {
+      try { Calendar.Events.remove(calId, ids[y]); removed++; } catch (delErr) {}
+    }
+  }
 
-  return { id: cal.getId(), count: added, colored: colored, colorErrors: colorErr };
+  return { id: calId, count: added + kept, added: added, kept: kept, removed: removed, colored: colored, colorErrors: colorErr, deduped: deduped };
 }
 
 /** משתף יומן עם משתמש בהרשאת קריאה (דורש את שירות Google Calendar API). */

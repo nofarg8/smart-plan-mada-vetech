@@ -46,7 +46,7 @@ export interface Plan {
   scheduledTopics: ScheduledTopic[];
   /** משימות המודל עם תאריך משובץ. */
   modelTasks: { task: ModelTask; date: Date }[];
-  /** מסלול החקר (חובה). */
+  /** מסלול החקר (כיתה ט' בלבד; ריק בז'/ח'). */
   research: Milestone[];
   /** כל הדד-ליינים, ממוינים לפי תאריך. */
   deadlines: Milestone[];
@@ -292,7 +292,7 @@ function scheduleModelTasks(
 }
 
 /**
- * מסלול החקר - חובה. אבני דרך רשמיות מהגאנט המחוזי (xlsx מעודכן), בתאריכים מהמקור.
+ * מסלול החקר - כיתה ט' בלבד. אבני דרך רשמיות מהגאנט המחוזי (xlsx מעודכן), בתאריכים מהמקור.
  * הסדר: הגשות -> יריד חקר מחוזי (16.3) -> שמתקדמים ממנו ליריד חקר ארצי (1.6).
  */
 function researchTrack(): Milestone[] {
@@ -378,7 +378,8 @@ export function buildPlan(input: EngineInput): Plan {
   const reservedWeeks = input.grade === 9 ? reservedActivityWeeks(weeklyContent) : [];
   const { scheduled, overflowHours, plannedHours, capacityHours } = scheduleTopics(bank, weeklyContent, dropped, input.topicOrder, new Set(reservedWeeks.map((r) => r.week)));
   const mtasks = scheduleModelTasks(modelTasksByGrade[input.grade], scheduled);
-  const research = researchTrack();
+  // מסלול החקר (אבני דרך + ירידים) שייך לכיתה ט' בלבד - בז'/ח' אין חקר בתוכנית.
+  const research = input.grade === 9 ? researchTrack() : [];
 
   // מבחן מפמ"ר (16.5)
   const mapmar: Milestone = { date: new Date(2027, 4, 16), label: 'מבחן מפמ"ר פנימי', kind: 'מבחן' };

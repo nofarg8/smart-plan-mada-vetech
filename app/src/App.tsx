@@ -309,6 +309,8 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<ReactNode>('');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<{ school: string; files: SchoolPlanFile[] } | null>(null);
+  // סינון לפי שם מורה - כשיש הרבה מורות בבית הספר.
+  const [filter, setFilter] = useState('');
 
   const enter = async () => {
     if (loading) return;
@@ -353,12 +355,33 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  // קיבוץ הקבצים לפי שם המורה (שם הקובץ: "שם המורה - גאנט אישי.pdf" / "שם המורה - קלנדר.ics").
-  const byTeacher = new Map<string, SchoolPlanFile[]>();
+  // ארגון הקבצים לתצוגה מסודרת: מורה -> כיתה -> גאנט PDF + גאנט יומן.
+  // שם הקובץ: "שם המורה - כיתה ז (ז'3) - גאנט אישי.pdf" / "... - קלנדר.ics"
+  // (קבצים ישנים בלי כיתה: "שם המורה - גאנט אישי.pdf").
+  interface ClassPlans { pdf?: SchoolPlanFile; ics?: SchoolPlanFile; updated: string }
+  const byTeacher = new Map<string, Map<string, ClassPlans>>();
   for (const f of data?.files ?? []) {
-    const teacher = f.name.split(' - ')[0].trim() || f.name;
-    byTeacher.set(teacher, [...(byTeacher.get(teacher) ?? []), f]);
+    const base = f.name.replace(/\.(pdf|ics)$/i, '');
+    const parts = base.split(' - ').map((s) => s.trim()).filter(Boolean);
+    const teacher = parts[0] || base;
+    const klass = parts.length >= 3 ? parts.slice(1, -1).join(' - ') : '';
+    const classes = byTeacher.get(teacher) ?? new Map<string, ClassPlans>();
+    const entry = classes.get(klass) ?? { updated: f.updated };
+    if (/\.pdf$/i.test(f.name)) entry.pdf = f; else entry.ics = f;
+    // תאריך העדכון של השורה = הקובץ שעודכן אחרון.
+    if (f.updated > entry.updated) entry.updated = f.updated;
+    classes.set(klass, entry);
+    byTeacher.set(teacher, classes);
   }
+  const teachers = [...byTeacher.entries()]
+    .map(([teacher, classes]) => ({
+      teacher,
+      classes: [...classes.entries()].sort((a, b) => a[0].localeCompare(b[0], 'he')),
+    }))
+    .sort((a, b) => a.teacher.localeCompare(b.teacher, 'he'));
+  const shown = filter.trim()
+    ? teachers.filter((t) => t.teacher.includes(filter.trim()))
+    : teachers;
 
   return (
     <div className="login-page" dir="rtl">
@@ -386,29 +409,46 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
           ) : (
             <>
               <h2>התוכניות של {data.school}</h2>
-              {byTeacher.size === 0 ? (
+              {teachers.length === 0 ? (
                 <p className="login-sub">עדיין לא הופקו תוכניות בבית הספר שלך. ברגע שמורה תפיק תוכנית - היא תופיע כאן.</p>
               ) : (
                 <>
-                  <p className="login-sub">{byTeacher.size === 1 ? 'מורה אחת הפיקה תוכנית' : `${byTeacher.size} מורות הפיקו תוכניות`} - לחצי לצפייה:</p>
+                  <p className="login-sub">{teachers.length === 1 ? 'מורה אחת הפיקה תוכניות' : `${teachers.length} מורות הפיקו תוכניות`} - לכל כיתה: גאנט PDF וגאנט יומן.</p>
+                  {teachers.length > 4 && (
+                    <input
+                      className="inp coord-filter"
+                      value={filter}
+                      onChange={(e) => setFilter(e.target.value)}
+                      placeholder="חיפוש לפי שם מורה"
+                    />
+                  )}
                   <div className="coord-list">
-                    {[...byTeacher.entries()].map(([teacher, files]) => (
+                    {shown.map(({ teacher, classes }) => (
                       <div key={teacher} className="coord-teacher">
                         <div className="ct-name">{teacher}</div>
-                        <div className="ct-files">
-                          {files.map((f) => (
-                            <a key={f.name} className="ct-file" href={f.url} target="_blank" rel="noopener noreferrer">
-                              {f.name.replace(/\.(pdf|ics)$/,'').split(' - ').slice(1).join(' - ') || f.name}
-                              <span className="ct-date">עודכן {f.updated}</span>
-                            </a>
+                        <div className="ct-classes">
+                          {classes.map(([klass, plans]) => (
+                            <div key={klass || 'כללי'} className="ct-class">
+                              <span className="ct-klass">{klass || 'תוכנית'}</span>
+                              <span className="ct-links">
+                                {plans.pdf && (
+                                  <a className="ct-file" href={plans.pdf.url} target="_blank" rel="noopener noreferrer">גאנט PDF</a>
+                                )}
+                                {plans.ics && (
+                                  <a className="ct-file" href={plans.ics.url} target="_blank" rel="noopener noreferrer">גאנט יומן</a>
+                                )}
+                              </span>
+                              <span className="ct-date">עודכן {plans.updated}</span>
+                            </div>
                           ))}
                         </div>
                       </div>
                     ))}
+                    {shown.length === 0 && <p className="login-sub">אין מורה בשם הזה.</p>}
                   </div>
                 </>
               )}
-              <button className="coord-link" onClick={() => setData(null)}>בדיקת בית ספר אחר</button>
+              <button className="coord-link" onClick={() => { setData(null); setFilter(''); }}>בדיקת בית ספר אחר</button>
               <button className="coord-link" onClick={onBack}>חזרה לכניסת מורה</button>
             </>
           )}
@@ -418,15 +458,17 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-/* ---------- מקרא ---------- */
-const LEGEND: { color: string; label: string }[] = [
-  { color: '#1c4e5e', label: 'נושא לימוד' },
-  { color: '#c2603f', label: 'חג / אירוע' },
-  { color: '#e0992f', label: 'מבחן' },
-  { color: '#6b5aa6', label: 'משימת מודל' },
-  { color: '#3066a6', label: 'יוזמת STEM' },
-  { color: '#2f8a5f', label: 'חקר' },
-];
+/* ---------- מקרא (לפי השכבה: חקר רק בט', משימות מודל רק בז'/ח') ---------- */
+function legendFor(grade: Grade): { color: string; label: string }[] {
+  return [
+    { color: '#1c4e5e', label: 'נושא לימוד' },
+    { color: '#c2603f', label: 'חג / אירוע' },
+    { color: '#e0992f', label: 'מבחן' },
+    ...(grade !== 9 ? [{ color: '#6b5aa6', label: 'משימת מודל' }] : []),
+    { color: '#3066a6', label: 'יוזמת STEM' },
+    ...(grade === 9 ? [{ color: '#2f8a5f', label: 'חקר' }] : []),
+  ];
+}
 
 /* ---------- כרטיס חודש ---------- */
 // כרטיס חודש - סקירה קומפקטית בלבד (מה לומדים החודש + שעות).
@@ -451,7 +493,8 @@ function SchoolInfo({ school, grade }: { school: SchoolStatus; grade: Grade }) {
   const h = school.hoursByGrade?.[grade];
   if (h) facts.push({ label: `שעות שבועיות (${GRADE_LABEL[grade]})`, value: `${h} ש"ש` });
   if (school.hasLab !== undefined) facts.push({ label: 'מעבדת מדעים', value: school.hasLab ? 'יש' : 'אין' });
-  if (school.schoolFair !== undefined) facts.push({ label: 'יריד חקר בית ספרי', value: school.schoolFair ? 'משתתפים' : 'לא' });
+  // יריד החקר שייך לכיתה ט' בלבד - לא מציגים אותו כשבונים תוכנית לז'/ח'.
+  if (grade === 9 && school.schoolFair !== undefined) facts.push({ label: 'יריד חקר בית ספרי', value: school.schoolFair ? 'משתתפים' : 'לא' });
   if (!facts.length) return null;
   return (
     <div className="school-info">
@@ -658,52 +701,66 @@ function WeeklyPlan({ weeks, expandAll, school, onOverride }: {
   return <div className="weekly-plan">{rows}</div>;
 }
 
-/* ---------- כיתה ט': סידור הנושאים (כולם חובה; אין מתווה חודשי כפוי) ---------- */
+/* ---------- כיתה ט': סידור גושי התוכן (לפי תחומי המפרט; אין מתווה חודשי כפוי) ---------- */
+// המורה מסדרת את הגושים (כימיה, ביולוגיה, פיזיקה...) ולא נושא-נושא; בתוך כל גוש
+// הנושאים נלמדים לפי סדר המפרט. topicOrder נשמר כרשימת נושאים שטוחה - המנוע לא השתנה.
 function Grade9OrderPanel({ order, onOrder }: { order: string[]; onOrder: (names: string[]) => void }) {
   const bank = banks[9];
-  const byName = new Map(bank.topics.map((t) => [t.name, t]));
+  const domainOf = new Map(bank.topics.map((t) => [t.name, t.domain]));
+  // סדר הגושים הנוכחי - לפי ההופעה הראשונה של כל תחום ב-topicOrder השמור.
+  const domains: string[] = [];
+  for (const name of order) {
+    const d = domainOf.get(name);
+    if (d && !domains.includes(d)) domains.push(d);
+  }
+  for (const t of bank.topics) if (!domains.includes(t.domain)) domains.push(t.domain);
+  const topicsOf = (domain: string) => bank.topics.filter((t) => t.domain === domain);
+  const applyOrder = (ds: string[]) => onOrder(ds.flatMap((d) => topicsOf(d).map((t) => t.name)));
+  // סדר שנשמר מהגרסה הקודמת (נושא-נושא) מיושר פעם אחת למבנה גושים - כך המנוע
+  // פורס בדיוק לפי מה שמוצג כאן.
+  useEffect(() => {
+    const norm = domains.flatMap((d) => topicsOf(d).map((t) => t.name));
+    if (norm.join('|') !== order.join('|')) onOrder(norm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
-    if (j < 0 || j >= order.length) return;
-    const next = [...order];
+    if (j < 0 || j >= domains.length) return;
+    const next = [...domains];
     [next[i], next[j]] = [next[j], next[i]];
-    onOrder(next);
+    applyOrder(next);
   };
   const totalHours = bank.topics.reduce((a, t) => a + t.hours, 0);
   return (
     <div className="g9-panel">
       <div className="g9-head">
-        <div className="g9-title">סדר הנושאים שלך לאורך השנה</div>
-        <span className="g9-hours">כל הנושאים - {totalHours} שעות תוכן</span>
+        <div className="g9-title">סדר גושי התוכן שלך לאורך השנה</div>
+        <span className="g9-hours">{totalHours} שעות תוכן</span>
       </div>
       <p className="g9-sub">
-        בכיתה ט' את מלמדת את <b>כל</b> הנושאים - כולם חובה - אבל הסדר בידיים שלך. הצענו כאן סדר התחלתי;
-        סדרי אותו בחיצים כרצונך (למעלה = מוקדם יותר בשנה). המערכת תפרוס לפי הסדר שלך, ותקדיש את השבועות
-        שלפני יריד החקר לעבודת החקר. אם יחסרו לך שעות - בשלב הבא תוכלי לצמצם, ועדיף להתחיל מנושאים עם
-        הרבה חומר רשות/הרחבה.
+        התוכנית בכיתה ט' מחולקת לגושים לפי תחומי התוכן של המפרט. סדרי בחיצים את הגושים
+        לפי הסדר שבו תלמדי אותם (למעלה = מוקדם יותר בשנה); בתוך כל גוש הנושאים נלמדים
+        לפי סדר המפרט. המערכת תפרוס את השנה לפי הסדר שלך, ותקדיש את השבועות שלפני
+        יריד החקר לעבודת החקר.
       </p>
       <div className="g9-list">
-        {order.map((name, i) => {
-          const t = byName.get(name);
-          if (!t) return null;
-          const nOpt = (t.optional ?? []).length;
+        {domains.map((domain, i) => {
+          const topics = topicsOf(domain);
+          const hours = topics.reduce((a, t) => a + t.hours, 0);
           return (
-            <div key={name} className="g9-row">
+            <div key={domain} className="g9-row">
               <span className="g9-pos">{i + 1}</span>
               <div className="g9-move">
                 <button className="g9-arrow" onClick={() => move(i, -1)} disabled={i === 0} title="הזיזי למעלה (מוקדם יותר)">▲</button>
-                <button className="g9-arrow" onClick={() => move(i, 1)} disabled={i === order.length - 1} title="הזיזי למטה (מאוחר יותר)">▼</button>
+                <button className="g9-arrow" onClick={() => move(i, 1)} disabled={i === domains.length - 1} title="הזיזי למטה (מאוחר יותר)">▼</button>
               </div>
               <div className="g9-body">
-                <div className="g9-name">{t.name}</div>
+                <div className="g9-name">{domain}</div>
                 <div className="g9-meta">
-                  <span className="g9-domain">{t.domain}</span>
-                  <span className="g9-h">{t.hours} ש'</span>
-                  <span className="adt-cls core">חובה</span>
-                  {nOpt > 0 && (
-                    <span className="g9-opt">{nOpt === 1 ? 'תת-נושא אחד רשות/הרחבה' : `${nOpt} תתי-נושא רשות/הרחבה`}</span>
-                  )}
+                  <span className="g9-h">{hours} ש'</span>
+                  <span className="g9-domain">{topics.length === 1 ? 'נושא אחד' : `${topics.length} נושאים`}</span>
                 </div>
+                <div className="g9-topics">{topics.map((t) => t.name).join(' · ')}</div>
               </div>
             </div>
           );
@@ -825,9 +882,9 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
       return (
         <div className="adjust warn collapsed">
           <span className="ac-warn">
-            <IconAlert color="#c2603f" /> צמצמת {appliedHours} {appliedHours === 1 ? 'שעה' : 'שעות'} ({nTopics}), אבל עדיין חסרות {still} שעות - כל הנושאים נשארים אך התוכנית תהיה צפופה (כל נושא מקבל פחות זמן מהמומלץ). אפשר לצמצם עוד כדי להרוויח מקום.
+            <IconAlert color="#c2603f" /> צמצמת {appliedHours} {appliedHours === 1 ? 'שעה' : 'שעות'} ({nTopics}), ועדיין חסרות {still} שעות - כל הנושאים נשארים בתוכנית, וכל נושא מקבל מעט פחות זמן ממה שכתוב בתוכנית הלימודים.
           </span>
-          <button className="adjust-edit" onClick={() => setEditing(true)}>פתחי לצמצום נוסף</button>
+          <button className="adjust-edit" onClick={() => setEditing(true)}>פתחי לעריכה</button>
         </div>
       );
     }
@@ -863,7 +920,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
       {domains.length > 0 && modelLocked.size > 0 && (
         <div className="adjust-note lock">
           <b>שימי לב:</b> {grade === 9
-            ? 'נושאים גדולים שעיקרם חובה אינם מוצגים כאן לצמצום.'
+            ? 'נושאים גדולים עם מעט חומר הרחבה/רשות אינם מוצגים כאן לצמצום.'
             : 'נושאים שעליהם נשענות משימות מודל, ונושאים גדולים שעיקרם חובה - אינם מוצגים כאן לצמצום.'}
         </div>
       )}
@@ -893,7 +950,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
                       <span className="adt-top">
                         <span className="adt-name">{t.name}</span>
                         <span className="adt-hours">{t.hours} ש'</span>
-                        <span className="adt-cls core">חובה</span>
+                        {grade !== 9 && <span className="adt-cls core">חובה</span>}
                         {nOpt > 0 && !sel && <span className="adt-rec">מועדף לצמצום</span>}
                         {sel && <span className="adt-off">מסומן לצמצום</span>}
                       </span>
@@ -910,7 +967,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
                           </div>
                         </>
                       ) : (
-                        <span className="adt-core">כל תתי-הנושא כאן מסומנים במפרט כחובה (אין בנושא הזה הרחבה/רשות).</span>
+                        <span className="adt-core">{grade === 9 ? 'אין בנושא הזה תתי-נושא הרחבה/רשות.' : 'כל תתי-הנושא כאן מסומנים במפרט כחובה (אין בנושא הזה הרחבה/רשות).'}</span>
                       )}
                     </span>
                   </label>
@@ -938,7 +995,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
             ? 'סמני נושאים שאת רוצה להוריד מהלו"ז ולחצי אישור - או סגרי אם אין שינוי.'
             : covered
             ? 'מצוין - כל הנושאים ייכנסו בזמן המלא, בלי דחיסה.'
-            : `נותרו ${remaining} שעות של פער. אפשר לסמן עוד נושאים לצמצום, או ללחוץ אישור כך - וכל הנושאים יישארו בתוכנית, עם מעט פחות זמן לכל אחד.`}
+            : `נותרו ${remaining} שעות של פער. באישור כך - כל הנושאים יישארו בתוכנית, וכל נושא יקבל מעט פחות זמן ממה שכתוב בתוכנית הלימודים.`}
         </div>
         <div className="adjust-confirm">
           {dirty ? (
@@ -1221,7 +1278,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
           <p className="sub">{GRADE_LABEL[grade]}{klass.trim() ? ` (${klass.trim()})` : ''} · {plan.weeklyHours} ש"ש · {session.teacherName} · {session.school.schoolName} · תשפ"ז</p>
         </div>
         <div className="legend">
-          {LEGEND.map((l) => (
+          {legendFor(grade).map((l) => (
             <span key={l.label}><span className="sq" style={{ background: l.color }} />{l.label}</span>
           ))}
         </div>
@@ -1260,7 +1317,7 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
       <div className="hero-row">
         <div>
           <div className="lbl lbl-hero">הפריסה השבועית האישית שלך - שיעור אחר שיעור</div>
-          <p className="hero-sub">לפי השעות שלך: כל שבוע מחולק לשיעורים שלך, עם הנושא ללמידה ומתי בדיוק עושים משימת מודל, חקר או מבחן. אפשר גם לערוך כל שיעור ידנית.</p>
+          <p className="hero-sub">לפי השעות שלך: כל שבוע מחולק לשיעורים שלך, עם הנושא ללמידה ומתי בדיוק עושים {grade === 9 ? 'חקר או מבחן' : 'משימת מודל או מבחן'}. אפשר גם לערוך כל שיעור ידנית.</p>
         </div>
         <button className="expand-all" onClick={() => setExpandAll((v) => !v)}>
           <span className="se-caret">{expandAll ? '−' : '+'}</span>

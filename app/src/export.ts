@@ -216,8 +216,8 @@ export function printPlan(): void {
   window.print();
 }
 
-/** מייצר PDF מאלמנט הדף ומחזיר base64 (בלי הקידומת data:). */
-async function generatePdfBase64(element: HTMLElement): Promise<string> {
+/** מייצר PDF מאלמנט הדף ומחזיר base64 (בלי הקידומת data:). מיוצא לצורכי בדיקה מקומית. */
+export async function generatePdfBase64(element: HTMLElement): Promise<string> {
   const opt = {
     margin: 6,
     image: { type: 'jpeg' as const, quality: 0.85 },
