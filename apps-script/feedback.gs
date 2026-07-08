@@ -18,6 +18,18 @@
 var FEEDBACK_SPREADSHEET_NAME = 'משוב ודיווח תקלות - תומכת הוראה אישית';
 var NOTIFY_EMAIL = 'gergrood@gmail.com';
 
+/**
+ * ⭐ הרצה חד-פעמית בעורך לפני הפרסום: "נוגעת" בדרייב, בגיליונות ובמייל כדי
+ * שגוגל תבקש את כל ההרשאות במסך אחד. אחרי ההרצה והאישור - לפרסם New deployment.
+ * (בלי זה הפרסום ננעל בלי הרשאת דרייב, והשליחות מהאתר נכשלות.)
+ */
+function authorizeNow() {
+  DriveApp.getRootFolder();
+  MailApp.getRemainingDailyQuota();
+  var tmp = SpreadsheetApp.create('__auth_check__');
+  try { DriveApp.getFileById(tmp.getId()).setTrashed(true); } catch (e) {}
+}
+
 var GENERAL_HEADERS = ['תאריך ושעה', 'סוג', 'שם מלא', 'שם בית הספר', 'סמל מוסד', 'תפקיד', 'אימייל', 'נייד'];
 
 function doPost(e) {
