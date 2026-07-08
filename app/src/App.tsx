@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { fetchLiveGantt, setLiveGantt, fetchSchool, banks, topicsByDomain, modelTasks, type SchoolStatus } from './data';
 import type { Grade } from './data';
 import { buildPlan, buildMonthlyCalendar, buildWeeklySchedule, type Plan, type WeekSchedule, type TeacherSlot, type CustomEvent } from './engine/plan';
-import { finalizePlan, listSchoolPlans, type SchoolPlanFile } from './export';
+import { finalizePlan, listSchoolPlans, submitFeedback, FEEDBACK_URL, type SchoolPlanFile } from './export';
 
 interface Session {
   teacherName: string;
@@ -508,6 +508,251 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ---------- כפתור משוב ודיווח תקלות (צף, בסגנון הלוגו) ---------- */
+// נשלח לחשבון האישי של נופר (apps-script/feedback.gs). מוצג רק כשיש כתובת פעילה.
+const FEEDBACK_ENABLED = !!FEEDBACK_URL || import.meta.env.DEV;
+
+/** שאלה בטופס המשוב/תקלות. */
+interface FbQuestion {
+  id: string;
+  label: string;
+  kind: 'scale' | 'choice' | 'text' | 'longtext';
+  options?: string[];
+  /** תווית לקצוות הסולם, למשל "1 = קשה מאוד, 5 = קל מאוד". */
+  hint?: string;
+  optional?: boolean;
+  /** מוצגת רק כשתשובה אחרת שונה מ"כן" (למשל פירוט אי-התאמה). */
+  onlyIfNotYes?: string;
+}
+
+/** השאלות הכלליות - מופיעות תמיד, בשני המסלולים. */
+const FB_GENERAL: FbQuestion[] = [
+  { id: 'name', label: 'שם מלא', kind: 'text' },
+  { id: 'school', label: 'שם בית הספר', kind: 'text' },
+  { id: 'role', label: 'תפקיד', kind: 'choice', options: ['רכזת מדע וטכנולוגיה', 'מורה מקצועית', 'אחר'] },
+  { id: 'email', label: 'האימייל שאיתו נכנסת לתומכת ההוראה', kind: 'text' },
+  { id: 'phone', label: 'מספר נייד (לסיוע בתקלות)', kind: 'text' },
+];
+
+/** שאלות המשוב, מקובצות. הכול חובה מלבד "הערות נוספות". */
+const FB_FEEDBACK: { group: string; items: FbQuestion[] }[] = [
+  {
+    group: 'חוויית השימוש',
+    items: [
+      { id: 'easeOfUse', label: 'עד כמה היה קל להבין ולהשתמש במערכת?', kind: 'scale', hint: '1 = קשה מאוד, 5 = קל מאוד' },
+      { id: 'personalFit', label: 'עד כמה תוכנית העבודה שקיבלת מרגישה מותאמת אישית לשעות ולכיתות שלך?', kind: 'scale', hint: '1 = כלל לא, 5 = מאוד' },
+      { id: 'timeSaved', label: 'כמה זמן המערכת חסכה לך, בהשוואה לבניית תוכנית עבודה בעצמך?', kind: 'choice', options: ['לא חסכה', 'עד שעה', 'כמה שעות', 'יום שלם ומעלה'] },
+      { id: 'mostUseful', label: 'מה הדבר הכי שימושי במערכת עבורך?', kind: 'longtext' },
+      { id: 'mostConfusing', label: 'מה היה הכי מבלבל או לא ברור?', kind: 'longtext' },
+    ],
+  },
+  {
+    group: 'תוכן ודיוק',
+    items: [
+      { id: 'matchesReality', label: 'האם הנושאים, השעות והתאריכים שקיבלת תואמים את המציאות בכיתה שלך?', kind: 'choice', options: ['כן', 'לא לגמרי', 'לא'] },
+      { id: 'mismatchDetail', label: 'מה לא תאם?', kind: 'longtext', onlyIfNotYes: 'matchesReality' },
+      { id: 'scientificIssue', label: 'האם היה משהו בתוכנית שהרגיש שגוי מבחינה מדעית או מבחינת תוכנית הלימודים?', kind: 'longtext' },
+    ],
+  },
+  {
+    group: 'המסירה (PDF, יומן, מייל)',
+    items: [
+      { id: 'deliveryOk', label: 'האם קיבלת את קובץ ה-PDF והיומן המשותף בהצלחה?', kind: 'choice', options: ['כן', 'לא', 'לא ניסיתי'] },
+      { id: 'emailClarity', label: 'עד כמה המייל שקיבלת היה ברור ומספק?', kind: 'scale', hint: '1 = בכלל לא, 5 = מאוד' },
+    ],
+  },
+  {
+    group: 'לסיום',
+    items: [
+      { id: 'wouldChange', label: 'מה היית משנה או מוסיפה במערכת?', kind: 'longtext' },
+      { id: 'recommend', label: 'האם תמליצי על המערכת לרכזת או למורה אחרת?', kind: 'scale', hint: '1 = לא אמליץ, 5 = בהחלט אמליץ' },
+      { id: 'notes', label: 'הערות נוספות (לא חובה)', kind: 'longtext', optional: true },
+    ],
+  },
+];
+
+/** שאלות דיווח התקלה - קצר וממוקד. */
+const FB_BUG: { group: string; items: FbQuestion[] }[] = [
+  {
+    group: 'מה קרה',
+    items: [
+      { id: 'bugDescription', label: 'תארי מה קרה ובאיזה שלב (מה לחצת, מה ציפית שיקרה, ומה קרה בפועל)', kind: 'longtext' },
+      { id: 'device', label: 'באיזה מכשיר השתמשת?', kind: 'choice', options: ['מחשב', 'נייד', 'טאבלט'] },
+      { id: 'browser', label: 'באיזה דפדפן?', kind: 'choice', options: ['כרום', 'ספארי', 'אחר'] },
+    ],
+  },
+];
+
+function FeedbackWidget({ session }: { session: Session | null }) {
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState<'type' | 'details' | 'questions' | 'done'>('type');
+  const [fbType, setFbType] = useState<'משוב' | 'דיווח תקלה' | null>(null);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [tried, setTried] = useState(false);
+  const set = (id: string, v: string) => setVals((s) => ({ ...s, [id]: v }));
+
+  // פתיחה: מילוי מראש ממה שכבר ידוע (לא שואלים מה שיש) + איפוס אחרי שליחה קודמת.
+  const openWidget = () => {
+    if (step === 'done') { setStep('type'); setFbType(null); setVals({}); setTried(false); setError(''); }
+    setVals((v) => ({
+      ...v,
+      name: v.name || session?.teacherName || '',
+      email: v.email || session?.teacherEmail || '',
+      school: v.school || session?.school.schoolName || '',
+    }));
+    setOpen(true);
+  };
+  // Escape סוגר.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  if (!FEEDBACK_ENABLED) return null;
+
+  const groups = fbType === 'משוב' ? FB_FEEDBACK : FB_BUG;
+  const visible = (q: FbQuestion) => !q.onlyIfNotYes || (vals[q.onlyIfNotYes] && vals[q.onlyIfNotYes] !== 'כן');
+  const missing = (q: FbQuestion) => !q.optional && visible(q) && !(vals[q.id] ?? '').trim();
+  const detailsOk = FB_GENERAL.every((q) => !missing(q));
+  const questionsOk = groups.every((g) => g.items.every((q) => !missing(q)));
+
+  const send = async () => {
+    setTried(true);
+    if (!questionsOk) return;
+    setSending(true);
+    setError('');
+    try {
+      const answers: Record<string, string> = {};
+      for (const g of groups) for (const q of g.items) if (visible(q)) answers[q.label] = vals[q.id] ?? '';
+      const ok = await submitFeedback({
+        action: 'feedback',
+        type: fbType,
+        name: vals.name, school: vals.school, role: vals.role, email: vals.email, phone: vals.phone,
+        semel: session?.school.semel ?? '',
+        answers,
+        userAgent: navigator.userAgent,
+      });
+      if (ok) setStep('done');
+      else setError('השליחה נכשלה - נסי שוב בעוד רגע.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const field = (q: FbQuestion) => {
+    if (!visible(q)) return null;
+    const invalid = tried && missing(q);
+    return (
+      <div key={q.id} className={`fb-q ${invalid ? 'invalid' : ''}`}>
+        <label className="flab">{q.label}</label>
+        {q.hint && <span className="fb-hint">{q.hint}</span>}
+        {q.kind === 'scale' && (
+          <div className="fb-chips">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button key={n} type="button" className={`fb-chip ${vals[q.id] === String(n) ? 'on' : ''}`} onClick={() => set(q.id, String(n))}>{n}</button>
+            ))}
+          </div>
+        )}
+        {q.kind === 'choice' && (
+          <div className="fb-chips">
+            {(q.options ?? []).map((o) => (
+              <button key={o} type="button" className={`fb-chip wide ${vals[q.id] === o ? 'on' : ''}`} onClick={() => set(q.id, o)}>{o}</button>
+            ))}
+          </div>
+        )}
+        {q.kind === 'text' && <input className="inp" value={vals[q.id] ?? ''} onChange={(e) => set(q.id, e.target.value)} />}
+        {q.kind === 'longtext' && <textarea className="inp fb-ta" value={vals[q.id] ?? ''} onChange={(e) => set(q.id, e.target.value)} rows={3} />}
+        {invalid && <span className="fb-missing">נשאר למלא את זה</span>}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <button type="button" className="fb-fab" onClick={openWidget} aria-label="משוב ודיווח תקלות" title="משוב ודיווח תקלות">
+        <img src="/favicon.png" alt="" />
+        <span className="fb-fab-label">משוב ותקלות</span>
+      </button>
+      {open && (
+        <div className="modal-overlay" onClick={() => !sending && setOpen(false)}>
+          <div className="modal fb-modal" dir="rtl" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="fb-close" onClick={() => setOpen(false)} aria-label="סגירה">×</button>
+
+            {step === 'type' && (
+              <>
+                <h3 className="modal-h">נשמח לשמוע ממך</h3>
+                <p className="modal-p">מה תרצי לעשות?</p>
+                <div className="fb-types">
+                  <button type="button" className="fb-type" onClick={() => { setFbType('דיווח תקלה'); setStep('details'); }}>
+                    <span className="fb-type-icon">🛠️</span>
+                    <span className="fb-type-name">דיווח על תקלה</span>
+                    <span className="fb-type-sub">משהו לא עובד כמו שצריך</span>
+                  </button>
+                  <button type="button" className="fb-type" onClick={() => { setFbType('משוב'); setStep('details'); }}>
+                    <span className="fb-type-icon">💚</span>
+                    <span className="fb-type-name">משוב על המערכת</span>
+                    <span className="fb-type-sub">ספרי לנו איך היה לך</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {step === 'details' && (
+              <>
+                <h3 className="modal-h">{fbType === 'משוב' ? 'משוב על המערכת' : 'דיווח על תקלה'}</h3>
+                <p className="modal-p">כמה פרטים עלייך, כדי שנדע עם מי אנחנו מדברות:</p>
+                <div className="fb-qs">{FB_GENERAL.map(field)}</div>
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-pr" onClick={() => { setTried(true); if (detailsOk) { setStep('questions'); setTried(false); } }}>המשך</button>
+                  <button type="button" className="modal-ghost" onClick={() => { setStep('type'); setTried(false); }}>חזרה</button>
+                </div>
+              </>
+            )}
+
+            {step === 'questions' && (
+              <>
+                <h3 className="modal-h">{fbType === 'משוב' ? 'המשוב שלך' : 'פרטי התקלה'}</h3>
+                <div className="fb-qs">
+                  {groups.map((g) => (
+                    <div key={g.group} className="fb-group">
+                      {groups.length > 1 && <div className="fb-group-name">{g.group}</div>}
+                      {g.items.map(field)}
+                    </div>
+                  ))}
+                </div>
+                {error && <div className="login-err"><IconAlert color="#c2603f" />{error}</div>}
+                <div className="modal-actions">
+                  <button type="button" className="btn btn-pr" onClick={send} disabled={sending}>
+                    {sending ? 'שולחת...' : 'שליחה'}
+                  </button>
+                  <button type="button" className="modal-ghost" onClick={() => { setStep('details'); setTried(false); }}>חזרה</button>
+                </div>
+              </>
+            )}
+
+            {step === 'done' && (
+              <>
+                <div className="modal-badge ok"><IconCheck /></div>
+                <h3 className="modal-h">תודה רבה!</h3>
+                <p className="modal-p">
+                  {fbType === 'משוב'
+                    ? 'המשוב שלך התקבל ועוזר לנו לשפר את המערכת עבור כולן.'
+                    : 'הדיווח התקבל. אם נצטרך פרטים נוספים - ניצור איתך קשר.'}
+                </p>
+                <button type="button" className="btn btn-pr modal-close" onClick={() => setOpen(false)}>סגירה</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1470,10 +1715,15 @@ export default function App() {
     return () => { alive = false; };
   }, []);
 
-  if (!session) {
-    return coordView
-      ? <CoordinatorScreen onBack={() => setCoordView(false)} />
-      : <LoginScreen onEnter={setSession} onCoord={() => setCoordView(true)} />;
-  }
-  return <ResultScreen grade={grade} onGrade={setGrade} ganttVersion={ganttVersion} session={session} saved={saved} onLogout={logout} />;
+  const screen = !session
+    ? (coordView
+        ? <CoordinatorScreen onBack={() => setCoordView(false)} />
+        : <LoginScreen onEnter={setSession} onCoord={() => setCoordView(true)} />)
+    : <ResultScreen grade={grade} onGrade={setGrade} ganttVersion={ganttVersion} session={session} saved={saved} onLogout={logout} />;
+  return (
+    <>
+      {screen}
+      <FeedbackWidget session={session} />
+    </>
+  );
 }

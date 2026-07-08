@@ -1004,6 +1004,68 @@ body {
 .result-page.exporting .finish-cta,
 .result-page.exporting .adjust-foot { display: none !important; }
 
+/* ===== כפתור משוב ודיווח תקלות (צף, בסגנון הלוגו) ===== */
+.fb-fab {
+  position: fixed; bottom: 18px; left: 18px; z-index: 40;
+  display: flex; align-items: center; gap: 0;
+  height: 58px; padding: 6px; border-radius: 999px;
+  background: linear-gradient(135deg, var(--teal), var(--teal-2));
+  border: none; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(28, 78, 94, 0.35);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.fb-fab:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(28, 78, 94, 0.45); }
+.fb-fab img {
+  width: 46px; height: 46px; border-radius: 50%; background: #fff;
+  object-fit: contain; padding: 3px;
+}
+.fb-fab-label {
+  font: 700 13.5px 'Rubik'; color: #fff; white-space: nowrap;
+  max-width: 0; overflow: hidden; opacity: 0;
+  transition: max-width 0.25s ease, opacity 0.25s ease, padding 0.25s ease;
+}
+.fb-fab:hover .fb-fab-label, .fb-fab:focus-visible .fb-fab-label { max-width: 130px; opacity: 1; padding: 0 12px 0 8px; }
+@media print { .fb-fab { display: none !important; } }
+
+/* פאנל המשוב */
+.fb-modal { position: relative; max-width: 560px; max-height: 86vh; overflow-y: auto; }
+.fb-close {
+  position: absolute; top: 10px; inset-inline-start: 12px;
+  font: 400 24px/1 'Rubik'; color: var(--muted); background: none; border: none; cursor: pointer;
+}
+.fb-close:hover { color: var(--heading-2); }
+.fb-types { display: flex; gap: 12px; margin-top: 14px; }
+.fb-type {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 20px 12px; border-radius: 14px; cursor: pointer;
+  background: var(--teal-tint); border: 1.5px solid var(--teal-tint-2);
+  transition: transform 0.15s, background 0.15s;
+}
+.fb-type:hover { transform: translateY(-2px); background: var(--teal-tint-2); }
+.fb-type-icon { font-size: 30px; }
+.fb-type-name { font: 700 15px 'Rubik'; color: var(--teal); }
+.fb-type-sub { font: 400 12.5px 'Rubik'; color: var(--muted); }
+.fb-qs { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; text-align: right; }
+.fb-group { display: flex; flex-direction: column; gap: 14px; }
+.fb-group-name {
+  font: 700 13.5px 'Rubik'; color: var(--teal);
+  border-bottom: 1px solid var(--teal-tint-2); padding-bottom: 4px; margin-top: 6px;
+}
+.fb-q { display: flex; flex-direction: column; gap: 6px; }
+.fb-q.invalid .flab { color: var(--error-2); }
+.fb-hint { font: 400 11.5px 'Rubik'; color: var(--muted-2); }
+.fb-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.fb-chip {
+  min-width: 40px; padding: 8px 12px; border-radius: 999px; cursor: pointer;
+  font: 600 13.5px 'Rubik'; color: var(--teal);
+  background: #fff; border: 1.5px solid var(--teal-tint-2);
+  transition: background 0.12s, color 0.12s;
+}
+.fb-chip:hover { background: var(--teal-tint); }
+.fb-chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+.fb-ta { resize: vertical; font-family: 'Rubik', sans-serif; }
+.fb-missing { font: 500 11.5px 'Rubik'; color: var(--error-2); }
+
 /* ===== רספונסיביות ===== */
 @media (max-width: 1100px) {
   .month-grid { grid-template-columns: repeat(3, 1fr); }

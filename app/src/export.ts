@@ -328,6 +328,30 @@ export async function finalizePlan(plan: Plan, session: SessionLike, weekly: Wee
   return postDelivery(plan, session, pdfBase64, icsContent, events, deviation, className);
 }
 
+// ===== משוב ודיווח תקלות (הכפתור הצף) =====
+// נשלח ל-Web App נפרד (apps-script/feedback.gs) שרץ בחשבון האישי של נופר
+// (gergrood@gmail.com), לא בחשבון ההתיישבותי - הדיווחים נאספים בגיליון אצלה.
+// כל עוד הכתובת ריקה - הכפתור לא מוצג באתר (יופעל ברגע שנופר תפרסם ותשלח URL).
+export const FEEDBACK_URL = '';
+
+/** שולח משוב/דיווח תקלה. מחזיר הצלחה; בפיתוח בלי כתובת - מדמה הצלחה לבדיקת החוויה. */
+export async function submitFeedback(payload: Record<string, unknown>): Promise<boolean> {
+  if (!FEEDBACK_URL) return import.meta.env.DEV;
+  try {
+    const res = await fetch(FEEDBACK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+    const data = await res.json();
+    return !!(data && data.ok);
+  } catch {
+    // כמו במסירה: הבקשה כנראה יצאה גם אם הדפדפן חסם את קריאת התשובה.
+    return true;
+  }
+}
+
 /** רשומת תוכנית מתויקת של מורה - לתצוגת הרכז/ת. */
 export interface SchoolPlanFile {
   name: string;
