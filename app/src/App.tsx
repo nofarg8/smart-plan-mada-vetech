@@ -1446,8 +1446,10 @@ function ResultScreen({ grade, onGrade, ganttVersion, session, saved, onLogout }
         droppedTopics: Array.from(applied),
       };
       const r = await finalizePlan(plan, session, weekly, el, deviation, klass);
-      if (r.ok && r.calendarShared) setDelivery({ status: 'done', msg: 'התוכנית מוכנה! ה-PDF ירד למחשב, ושלחנו למייל שלך גם את ה-PDF וגם את קובץ היומן (אפשר לצרף אותו ליומן Google שלך בקלות). בנוסף נוצר עבורך יומן משותף שיופיע בגוגל קלנדר (אשרי את השיתוף אם תתבקשי), ועותק נשלח לרכז/ת שלך.' });
-      else if (r.ok) setDelivery({ status: 'done', msg: 'ה-PDF ירד למחשב, שלחנו אותו ואת קובץ היומן למייל שלך, ועותק נשלח לרכז/ת שלך. (היומן המשותף עדיין לא הופעל - נשלים אותו.)' });
+      // הכוונת ספאם: מיילים אוטומטיים עם קובץ מצורף נוחתים לעיתים בספאם/עדכונים - מכוונים את המורה לחפש שם.
+      const mailNote = ' לא רואה את המייל עם ה-PDF? חפשי בתיבת הספאם או בלשונית "עדכונים" וסמני "לא ספאם" - כך המיילים הבאים יגיעו רגיל.';
+      if (r.ok && r.calendarShared) setDelivery({ status: 'done', msg: 'התוכנית מוכנה! ה-PDF ירד למחשב, ושלחנו למייל שלך גם את ה-PDF וגם את קובץ היומן (אפשר לצרף אותו ליומן Google שלך בקלות). בנוסף נוצר עבורך יומן משותף שיופיע בגוגל קלנדר (אשרי את השיתוף אם תתבקשי), ועותק נשלח לרכז/ת שלך.' + mailNote });
+      else if (r.ok) setDelivery({ status: 'done', msg: 'ה-PDF ירד למחשב, שלחנו אותו ואת קובץ היומן למייל שלך, ועותק נשלח לרכז/ת שלך. (היומן המשותף עדיין לא הופעל - נשלים אותו.)' + mailNote });
       else setDelivery({ status: 'error', msg: r.error || 'ההפקה נכשלה. נסי שוב.' });
     } catch {
       setDelivery({ status: 'error', msg: 'ההפקה נכשלה. נסי שוב.' });
