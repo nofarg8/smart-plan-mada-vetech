@@ -182,6 +182,63 @@ function Header({ grade, onGrade, session, onFinalize, working, onLogout, showFi
   );
 }
 
+/* ---------- מסך הבית: קישוט אטום + אייקוני הכרטיסים ---------- */
+/** אטום דקורטיבי (מסלולים + אלקטרונים) - מסתובב לאט ברקע ה-Hero. */
+const AtomDecor = ({ className }: { className: string }) => (
+  <svg className={className} viewBox="0 0 200 200" fill="none" aria-hidden="true">
+    <g className="atom-orbits">
+      <ellipse cx="100" cy="100" rx="88" ry="32" stroke="currentColor" strokeWidth="1.3" />
+      <ellipse cx="100" cy="100" rx="88" ry="32" transform="rotate(60 100 100)" stroke="currentColor" strokeWidth="1.3" />
+      <ellipse cx="100" cy="100" rx="88" ry="32" transform="rotate(120 100 100)" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="100" cy="100" r="7" fill="currentColor" />
+      <circle cx="188" cy="100" r="4.5" fill="currentColor" />
+      <circle cx="57" cy="29" r="4.5" fill="currentColor" />
+      <circle cx="57" cy="171" r="4.5" fill="currentColor" />
+    </g>
+  </svg>
+);
+
+/** אייקוני שלושת הכרטיסים במסך הבית. */
+const IconFeatSchedule = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="4.5" width="18" height="16" rx="2.5" />
+    <path d="M3 9.5h18M8 2.5v4M16 2.5v4" />
+    <circle cx="12" cy="15" r="3.4" />
+    <path d="M12 13.4V15l1.2 1" />
+  </svg>
+);
+const IconFeatBell = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 9a6 6 0 0 0-12 0c0 5.5-2.2 7-2.2 7h16.4S18 14.5 18 9z" />
+    <path d="M10.2 19.5a2 2 0 0 0 3.6 0" />
+  </svg>
+);
+const IconFeatSend = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 3 10.5 13.5" />
+    <path d="M21 3l-6.8 18-3.7-7.5L3 9.8 21 3z" />
+  </svg>
+);
+
+/** שלושת הכרטיסים - מה המערכת נותנת. */
+const HOME_FEATURES: { icon: () => ReactNode; title: string; text: string }[] = [
+  {
+    icon: IconFeatSchedule,
+    title: 'פריסה אישית לפי השעות שלך',
+    text: 'מזינה מתי את מלמדת - ומקבלת כל שבוע מחולק לשיעורים שלך, עם נושא, משימת מודל, חקר ומבחן במקום הנכון.',
+  },
+  {
+    icon: IconFeatBell,
+    title: 'תזכורות ברגע הנכון',
+    text: 'המערכת מזכירה לך מראש את מה שחשוב: הכנה לתחרויות ה-STEM, הגשות החקר והמועדים המחוזיים - בגאנט וביומן.',
+  },
+  {
+    icon: IconFeatSend,
+    title: 'מוכן בלחיצה אחת',
+    text: 'גאנט PDF אישי, יומן Google שמתעדכן לבד, ועותק לרכזת - הכל נשלח בלחיצה.',
+  },
+];
+
 /* ---------- מסך פתיחה + הזדהות ---------- */
 /** בדיקת תקינות בסיסית לכתובת אימייל - טעות הקלדה במייל מפילה את היומן והמיילים. */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -198,6 +255,8 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
   const [error, setError] = useState<ReactNode>('');
   const [checking, setChecking] = useState(false);
   const [found, setFound] = useState<SchoolStatus | null>(null);
+  // כפתור ה-Hero "בואו נתחיל" גולל אל טופס ההזדהות.
+  const formRef = useRef<HTMLDivElement>(null);
   // סמל שמולא מראש מההיסטוריה - מציגים את שם בית הספר מיד (כמו בהקלדה).
   useEffect(() => {
     const digits = (hist.semels[0] ?? '').replace(/\D/g, '');
@@ -287,7 +346,40 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
   return (
     <div className="login-page" dir="rtl">
       <div className="hd"><Brand /></div>
-      <div className="login-body">
+
+      {/* ===== Hero - מה המערכת עושה, במבט אחד ===== */}
+      <section className="home-hero">
+        <AtomDecor className="hero-atom hero-atom-a" />
+        <AtomDecor className="hero-atom hero-atom-b" />
+        <h1 className="hero-title">
+          תוכנית העבודה השנתית שלך במדע וטכנולוגיה
+          <span className="hero-title-accent">מוכנה בכמה דקות</span>
+        </h1>
+        <p className="hero-tag">
+          מזינה את שעות ההוראה שלך, והמערכת בונה פריסה שבועית אישית ומתוארכת - שיעור אחר שיעור,
+          לפי המפרט הרשמי של משרד החינוך.
+        </p>
+        <button
+          type="button"
+          className="btn btn-pr hero-cta"
+          onClick={() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          בואו נתחיל
+        </button>
+
+        {/* שלושת הכרטיסים - מה מקבלים */}
+        <div className="home-feats">
+          {HOME_FEATURES.map((f) => (
+            <div key={f.title} className="feat">
+              <div className="feat-ic">{f.icon()}</div>
+              <div className="feat-title">{f.title}</div>
+              <p className="feat-text">{f.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="login-body" ref={formRef}>
         <div className="login-card">
           <h2>כמה פרטים ונתחיל</h2>
           <p className="login-sub">נשתמש בהם כדי לשלוף את פרטי בית הספר שלך ולבנות תוכנית אישית.</p>

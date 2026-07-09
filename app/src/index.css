@@ -173,8 +173,127 @@ body {
 /* ===========================================================
    מסך פתיחה / הזדהות
    =========================================================== */
-.login-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--page); }
+.login-page { min-height: 100vh; display: flex; flex-direction: column; background: var(--page); overflow-x: hidden; }
 .login-page .hd { border-bottom: 1px solid var(--card-border-2); }
+
+/* ===== מסך הבית: Hero מדעי-חם + שלושת הכרטיסים ===== */
+.home-hero {
+  position: relative;
+  text-align: center;
+  padding: 64px 22px 46px;
+  background:
+    radial-gradient(1100px 420px at 50% -80px, var(--teal-tint) 0%, rgba(238, 245, 245, 0) 68%),
+    linear-gradient(180deg, #f3f0e7 0%, var(--page) 100%);
+  overflow: hidden;
+}
+.hero-atom { position: absolute; pointer-events: none; }
+.hero-atom .atom-orbits { transform-origin: 100px 100px; animation: atomSpin 70s linear infinite; }
+.hero-atom-a { width: 300px; height: 300px; top: -70px; inset-inline-start: -60px; color: var(--teal-2); opacity: 0.13; }
+.hero-atom-b { width: 210px; height: 210px; bottom: 116px; inset-inline-end: -46px; color: var(--mustard); opacity: 0.16; }
+.hero-atom-b .atom-orbits { animation-duration: 55s; animation-direction: reverse; }
+
+.hero-title {
+  position: relative;
+  font: 700 clamp(26px, 4.2vw, 40px)/1.25 'Rubik';
+  color: var(--heading);
+  max-width: 760px;
+  margin: 0 auto;
+  animation: riseIn 0.55s ease-out both;
+}
+.hero-title-accent {
+  display: block;
+  margin-top: 6px;
+  color: var(--teal-2);
+}
+/* קו הדגשה חם מתחת ל"מוכנה בכמה דקות" */
+.hero-title-accent::after {
+  content: '';
+  display: block;
+  width: 130px;
+  height: 5px;
+  margin: 10px auto 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--mustard), var(--mustard-tint-2));
+}
+.hero-tag {
+  position: relative;
+  font: 400 16.5px/1.7 'Rubik';
+  color: var(--body-text);
+  max-width: 640px;
+  margin: 18px auto 26px;
+  animation: riseIn 0.55s ease-out 0.12s both;
+}
+.hero-cta {
+  position: relative;
+  font-size: 16px;
+  padding: 15px 44px;
+  box-shadow: 0 10px 26px rgba(28, 78, 94, 0.28);
+  animation: riseIn 0.55s ease-out 0.22s both;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.hero-cta:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(28, 78, 94, 0.36); }
+
+.home-feats {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 980px;
+  margin: 44px auto 0;
+  text-align: right;
+}
+.feat {
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  padding: 22px 20px 20px;
+  box-shadow: 0 4px 16px rgba(43, 39, 34, 0.05);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  animation: riseIn 0.55s ease-out both;
+}
+.feat:nth-child(1) { animation-delay: 0.3s; }
+.feat:nth-child(2) { animation-delay: 0.42s; }
+.feat:nth-child(3) { animation-delay: 0.54s; }
+.feat:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 14px 30px rgba(28, 78, 94, 0.13);
+  border-color: var(--teal-tint-2);
+}
+.feat-ic {
+  width: 52px; height: 52px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 16px;
+  color: var(--teal);
+  background: linear-gradient(135deg, var(--teal-tint) 0%, var(--teal-tint-2) 100%);
+  border: 1px solid var(--teal-tint-2);
+  margin-bottom: 14px;
+  animation: floaty 5.2s ease-in-out infinite;
+}
+.feat:nth-child(2) .feat-ic { animation-delay: 0.9s; color: var(--mustard-text-2); background: linear-gradient(135deg, var(--mustard-tint) 0%, var(--mustard-tint-2) 100%); border-color: var(--mustard-tint-2); }
+.feat:nth-child(3) .feat-ic { animation-delay: 1.8s; }
+.feat-title { font: 700 16px 'Rubik'; color: var(--heading-2); margin-bottom: 7px; }
+.feat-text { font: 400 13.5px/1.65 'Rubik'; color: var(--muted); margin: 0; }
+
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes atomSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-title, .hero-tag, .hero-cta, .feat { animation: none; }
+  .feat-ic, .hero-atom .atom-orbits { animation: none; }
+}
+@media (max-width: 860px) {
+  .home-hero { padding: 44px 18px 36px; }
+  .home-feats { grid-template-columns: 1fr; max-width: 480px; gap: 14px; margin-top: 32px; }
+  .hero-atom-a { width: 200px; height: 200px; top: -50px; inset-inline-start: -70px; }
+  .hero-atom-b { width: 150px; height: 150px; bottom: auto; top: 30px; inset-inline-end: -60px; }
+}
 .login-body {
   flex: 1;
   display: flex; align-items: center; justify-content: center;
