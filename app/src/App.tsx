@@ -410,7 +410,7 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
             </div>
 
             <div className="field">
-              <label className="flab">נייד (לסיוע ותמיכה בתקלות)</label>
+              <label className="flab">נייד</label>
               {/* המספר נכתב משמאל לימין כמקובל: קידומת ואז שאר המספר */}
               <div className="phone-row" dir="ltr">
                 <input
@@ -667,7 +667,7 @@ const FB_GENERAL: FbQuestion[] = [
   { id: 'school', label: 'שם בית הספר', kind: 'text' },
   { id: 'role', label: 'תפקיד', kind: 'choice', options: ['רכזת מדע וטכנולוגיה', 'מורה מקצועית', 'אחר'] },
   { id: 'email', label: 'האימייל שאיתו נכנסת לתומכת ההוראה', kind: 'text' },
-  { id: 'phone', label: 'מספר נייד (לסיוע בתקלות)', kind: 'text' },
+  { id: 'phone', label: 'מספר נייד', kind: 'text' },
 ];
 
 /** שאלות המשוב, מקובצות. הכול חובה מלבד "הערות נוספות". */
@@ -783,9 +783,11 @@ function FeedbackWidget({ session }: { session: Session | null }) {
   const field = (q: FbQuestion) => {
     if (!visible(q)) return null;
     const invalid = tried && missing(q);
+    // "לסיוע בתקלות" מוצג רק במסלול דיווח תקלה - במשוב זה סתם מספר נייד.
+    const label = q.id === 'phone' && fbType === 'דיווח תקלה' ? 'מספר נייד (לסיוע בתקלות)' : q.label;
     return (
       <div key={q.id} className={`fb-q ${invalid ? 'invalid' : ''}`}>
-        <label className="flab">{q.label}</label>
+        <label className="flab">{label}</label>
         {q.hint && <span className="fb-hint">{q.hint}</span>}
         {q.kind === 'scale' && (
           <div className="fb-chips">
