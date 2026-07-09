@@ -9,7 +9,9 @@ import type { Plan, WeekSchedule } from './engine/plan';
 interface SessionLike {
   teacherName: string;
   teacherEmail: string;
-  school: { schoolName: string; semel: string; coordinatorEmail: string };
+  /** נייד המורה (מהכניסה) - נרשם בגיליון משתמשי האתר. */
+  teacherPhone?: string;
+  school: { schoolName: string; semel: string; coordinatorEmail: string; coordinatorName?: string };
 }
 
 // כתובת ה-Web App של סקריפט המסירה (רץ בחשבון ההתיישבותי, יוצר תיקיות ושומר קבצים).
@@ -311,6 +313,8 @@ async function postDelivery(plan: Plan, session: SessionLike, pdfBase64: string,
     schoolName: session.school.schoolName,
     teacherName: session.teacherName,
     teacherEmail: session.teacherEmail,
+    teacherPhone: session.teacherPhone ?? '',
+    coordinatorName: session.school.coordinatorName ?? '',
     coordinatorEmail: session.school.coordinatorEmail,
     gradeLabel: `כיתה ${grade}${classLabel}`,
     calendarName: `תוכנית עבודה מדע וטכנולוגיה - ${session.teacherName} - כיתה ${grade}${classLabel}`,

@@ -65,6 +65,13 @@ function deliverPlan_(p) {
     out.deviationError = String(devErr.message || devErr);
   }
 
+  // גיליון משתמשי האתר: שורה לכל מורה עם הכיתות שיצרה - מתעדכן בכל מסירה. לא חוסם.
+  try {
+    if (logUser_(p, schoolName, schoolId, teacher)) out.userLogged = true;
+  } catch (userErr) {
+    out.userLogError = String(userErr.message || userErr);
+  }
+
   // גאנט אישי (PDF). שומרים גם את ה-blob כדי לצרף אותו למייל למורה.
   var pdfBlob = null;
   if (p.pdfBase64) {
@@ -164,6 +171,88 @@ function deliverPlan_(p) {
   }
 
   return out;
+}
+
+// ===== גיליון משתמשי האתר: שורה לכל מורה, עם כל הכיתות שיצרה =====
+
+var USERS_SHEET_NAME = 'משתמשי האתר - תומכת הוראה אישית';
+var USERS_HEADERS = [
+  'עדכון אחרון', 'שם בית ספר', 'סמל מוסד',
+  'שם המורה', 'אימייל המורה', 'נייד המורה',
+  'שם הרכזת', 'אימייל הרכזת',
+  'כיתות שנוצרו', 'מספר מסירות'
+];
+
+/** מאתר/יוצר את גיליון משתמשי האתר בתוך תיקיית האם. */
+function getOrCreateUsersSheet_() {
+  var parent = DriveApp.getFolderById(DELIVERY_PARENT_ID);
+  var it = parent.getFilesByName(USERS_SHEET_NAME);
+  if (it.hasNext()) return SpreadsheetApp.open(it.next());
+  var ss = SpreadsheetApp.create(USERS_SHEET_NAME);
+  var file = DriveApp.getFileById(ss.getId());
+  parent.addFile(file);
+  try { DriveApp.getRootFolder().removeFile(file); } catch (e) {}
+  return ss;
+}
+
+/**
+ * רושם/מעדכן את המורה בגיליון המשתמשים בכל מסירה (upsert לפי סמל + אימייל המורה):
+ * שורה אחת למורה, עמודת הכיתות צוברת כל כיתה שהמורה יצרה, ומונה המסירות עולה.
+ */
+function logUser_(p, schoolName, schoolId, teacher) {
+  var ss = getOrCreateUsersSheet_();
+  var sheet = ss.getSheets()[0];
+  if (sheet.getLastRow() === 0) {
+    sheet.setRightToLeft(true);
+    sheet.appendRow(USERS_HEADERS);
+    sheet.getRange(1, 1, 1, USERS_HEADERS.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+
+  var teacherEmail = String(p.teacherEmail || '').trim();
+  var gradeLabel = String(p.gradeLabel || '').trim();
+  var when = Utilities.formatDate(new Date(), 'Asia/Jerusalem', 'dd/MM/yyyy HH:mm');
+
+  // איתור שורה קיימת של המורה (סמל מוסד + אימייל, בלי תלות ברישיות).
+  var wantSemel = String(schoolId).replace(/\D/g, '');
+  var wantEmail = teacherEmail.toLowerCase();
+  var rowIdx = 0; // מספר שורה בגיליון (1-based); 0 = לא נמצא
+  var classes = [];
+  var deliveries = 0;
+  var last = sheet.getLastRow();
+  if (last >= 2) {
+    var data = sheet.getRange(2, 1, last - 1, USERS_HEADERS.length).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][2]).replace(/\D/g, '') === wantSemel &&
+          String(data[i][4]).trim().toLowerCase() === wantEmail) {
+        rowIdx = i + 2;
+        classes = String(data[i][8] || '').split(',').map(function (s) { return s.trim(); }).filter(String);
+        deliveries = Number(data[i][9]) || 0;
+        break;
+      }
+    }
+  }
+
+  // צבירת הכיתה הנוכחית (בלי כפילויות) והעלאת מונה המסירות.
+  if (gradeLabel && classes.indexOf(gradeLabel) < 0) classes.push(gradeLabel);
+  deliveries++;
+
+  var row = [
+    when, schoolName, schoolId,
+    teacher, teacherEmail, String(p.teacherPhone || '').trim(),
+    String(p.coordinatorName || '').trim(), String(p.coordinatorEmail || '').trim(),
+    classes.join(', '), deliveries
+  ];
+  if (rowIdx > 0) sheet.getRange(rowIdx, 1, 1, USERS_HEADERS.length).setValues([row]);
+  else sheet.appendRow(row);
+
+  // מיון לפי בית ספר ואז שם המורה - נוח לרכזת אחת לראות את כל הצוות יחד.
+  var lastNow = sheet.getLastRow();
+  if (lastNow > 2) {
+    sheet.getRange(2, 1, lastNow - 1, USERS_HEADERS.length)
+      .sort([{ column: 2, ascending: true }, { column: 4, ascending: true }]);
+  }
+  return true;
 }
 
 // ===== דיווח חריגות (item 7): גיליון אחד בתיקיית האם, ממויין לפי בית ספר =====
