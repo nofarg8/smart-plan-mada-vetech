@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { fetchLiveGantt, setLiveGantt, fetchSchool, banks, topicsByDomain, modelTasks, type SchoolStatus } from './data';
+import { fetchLiveGantt, setLiveGantt, fetchSchool, banks, topicsByDomain, modelTasks, coreSubtopics, type SchoolStatus } from './data';
 import type { Grade } from './data';
 import { buildPlan, buildMonthlyCalendar, buildWeeklySchedule, type Plan, type WeekSchedule, type TeacherSlot, type CustomEvent } from './engine/plan';
 import { finalizePlan, listSchoolPlans, submitFeedback, FEEDBACK_URL, type SchoolPlanFile } from './export';
@@ -977,11 +977,16 @@ function WeekRow({ week, expandAll, school, onOverride }: {
                   </span>
                 ))}
                 {week.initiatives.map((ini) => {
+                  // בית ספר שרשום ליוזמה -> "תזכורת" (מבנה אחיד עם תזכורות החקר וה-STEM);
+                  // יוזמה שלא צוינה בסטטוס -> "הצעה" (הזדמנות, לא תזכורת למועד).
                   const reg = isRegistered(ini.keywords, school);
-                  return (
-                    <span key={ini.name} className={`mchip init ${reg ? 'reg' : 'sug'}`}>
-                      <span className="chip-tag">{reg ? 'מזכירים' : 'הצעה'}</span>
-                      {ini.name}
+                  return reg ? (
+                    <span key={ini.name} className="mchip reminder">
+                      <span className="chip-tag">תזכורת</span>{ini.name}
+                    </span>
+                  ) : (
+                    <span key={ini.name} className="mchip init sug">
+                      <span className="chip-tag">הצעה</span>{ini.name}
                     </span>
                   );
                 })}
@@ -1260,9 +1265,18 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
                 const sel = pending.has(t.name);
                 const opt = t.optional ?? [];
                 const nOpt = opt.length;
-                const strong = nOpt >= 3; // הרבה חומר הרחבה/רשות = המלצה חזקה יותר
+                // יחס החומר שאינו חובה מתוך כלל תתי-הנושא (ליבה + הרחבה/רשות). נושא שרובו
+                // המוחלט חובה (יחס נמוך) לא יסומן "מועדף לצמצום" - רק נושא עם חלק משמעותי
+                // של הרחבה/רשות. (item 3 - משקף בלבד, בלי הטיה לצמצם נושא שהוא כמעט כולו חובה.)
+                const nCore = coreSubtopics[grade]?.[t.name]?.length ?? 0;
+                const total = nCore + nOpt;
+                const optRatio = total > 0 ? nOpt / total : 0;
+                // "מועדף לצמצום" רק כשלפחות ~חמישית מהנושא היא הרחבה/רשות. נושא שרובו
+                // המוחלט חובה (יחס < 0.2) לא מומלץ - עדיין ניתן לבחור, בלי תג המלצה.
+                const preferred = nOpt > 0 && optRatio >= 0.2;
+                const strong = optRatio >= 0.4; // חלק גדול מהנושא אינו חובה = המלצה חזקה יותר
                 const subj = nOpt === 1 ? 'תת-נושא אחד מסומן' : `${nOpt} תתי-נושא מסומנים`;
-                const tail = strong ? ' יש כאן יחסית הרבה חומר שאינו חובה.' : '';
+                const tail = strong ? ' חלק ניכר מהנושא הוא חומר שאינו חובה.' : '';
                 const reason = nOpt > 0
                   ? `בנושא הזה ${subj} במפרט כהרחבה/רשות - חומר העשרה, לא ליבת החובה.${tail}`
                   : '';
@@ -1274,7 +1288,7 @@ function AdjustPanel({ grade, plan, pending, applied, onToggle, onConfirm, onRes
                         <span className="adt-name">{t.name}</span>
                         <span className="adt-hours">{t.hours} ש'</span>
                         {grade !== 9 && <span className="adt-cls core">חובה</span>}
-                        {nOpt > 0 && !sel && <span className="adt-rec">מועדף לצמצום</span>}
+                        {preferred && !sel && <span className="adt-rec">מועדף לצמצום</span>}
                         {sel && <span className="adt-off">יורד מהתוכנית שלך</span>}
                       </span>
                       {nOpt > 0 ? (

@@ -136,6 +136,11 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
     if (d) out.push({ start: d, end: nextDay(d), summary: `יוזמה: ${ini.name}`, category: 'יוזמה' });
   }
 
+  // תזכורות הכנה לתחרויות STEM (בכל השכבות) - נכנסות ליומן כ"תזכורת:".
+  for (const r of plan.reminders) {
+    out.push({ start: r.date, end: nextDay(r.date), summary: `תזכורת: ${r.label}`, category: 'תזכורת' });
+  }
+
   // חופשות וחגים רשמיים (טווח יום-שלם).
   for (const h of officialHolidays) {
     const s = parseDMY(h.start);

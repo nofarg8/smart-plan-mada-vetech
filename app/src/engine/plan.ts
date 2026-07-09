@@ -43,6 +43,12 @@ export interface Milestone {
   kind: 'משימת מודל' | 'חקר' | 'מבחן' | 'יריד';
 }
 
+/** תזכורת מתוארכת (הכנה לתחרות / הגשה) - מוצגת כ"תזכורת: ___", לא כשיעור. בכל השכבות. */
+export interface Reminder {
+  date: Date;
+  label: string;
+}
+
 export interface Plan {
   grade: Grade;
   /** ש"ש מלאות בפועל (כולל שעת ה-+1). */
@@ -53,6 +59,8 @@ export interface Plan {
   modelTasks: { task: ModelTask; date: Date }[];
   /** מסלול החקר (כיתה ט' בלבד; ריק בז'/ח'). */
   research: Milestone[];
+  /** תזכורות מתוארכות (הכנה/הגשה לתחרויות STEM) - בכל השכבות; מוצגות כ"תזכורת: ___". */
+  reminders: Reminder[];
   /** כל הדד-ליינים, ממוינים לפי תאריך. */
   deadlines: Milestone[];
   /** התראות. */
@@ -308,6 +316,23 @@ function scheduleModelTasks(
     const date = weekStart(best);
     if (date) out.push({ task, date });
   }
+
+  // ייצוב סדר בתוך יחידה (item 4): משימות של אותה יחידה (אותו שדה topic, למשל
+  // "שימור המסה ואנרגיה כימית") חייבות לשמור על סדר הבנק - לומדה א' לפני ב' לפני
+  // אירוע ההערכה. השיבוץ ל"שבוע הפחות-עמוס" עלול להפוך את הסדר, לכן מחלקים מחדש
+  // את התאריכים שהוקצו ליחידה לפי סדר הבנק (המוקדם ביותר לראשון ברשימה).
+  const byUnit = new Map<string, { task: ModelTask; date: Date }[]>();
+  for (const item of out) {
+    const key = item.task.topic || item.task.name;
+    if (!byUnit.has(key)) byUnit.set(key, []);
+    byUnit.get(key)!.push(item);
+  }
+  for (const group of byUnit.values()) {
+    if (group.length < 2) continue;
+    const sortedDates = group.map((g) => g.date).sort((a, b) => a.getTime() - b.getTime());
+    group.forEach((g, i) => { g.date = sortedDates[i]; }); // group כבר בסדר הבנק (סדר ה-out)
+  }
+
   return out.sort((a, b) => a.date.getTime() - b.date.getTime());
 }
 
@@ -332,6 +357,20 @@ function researchTrack(): Milestone[] {
   return out;
 }
 
+/**
+ * תזכורות הכנה לתחרויות ה-STEM (עין העדשה + מרחבי בריחה) - בכל השכבות.
+ * המועד הרשמי להגשה המחוזית הוא 1.12.26 (מהגאנט); מוסיפים שתי תזכורות מקדימות
+ * (שבועיים ושבוע לפני) כדי שהמורה תספיק להכין את התלמידות. התאריך הסופי רשמי;
+ * התזכורות המקדימות הן עזר תכנוני בלבד.
+ */
+function stemReminders(): Reminder[] {
+  const label = 'להתכונן לתחרויות STEM (עין העדשה, מרחבי בריחה) - ההגשה הסופית למחוז ב-1.12';
+  return [
+    { date: new Date(2026, 10, 17), label }, // 17.11.26 - שבועיים לפני
+    { date: new Date(2026, 10, 24), label }, // 24.11.26 - שבוע לפני
+  ];
+}
+
 /** שבוע הלימוד הראשון שמתחיל בתאריך הנתון או אחריו (עמיד לתאריכים שנופלים בחופשה). */
 function firstTeachingWeekFrom(target: Date): number {
   for (const w of teachingWeeks()) {
@@ -354,8 +393,9 @@ function accumulateWeeksBack(anchorWeek: number, weeklyContent: number, budget: 
 }
 
 /**
- * כיתה ט' בלבד: הקצאת זמן לפעילות (עדכון 8.7):
- *  - בלוק STEM (שבוע שלם): השבוע שלפני המועד המחוזי לתחרויות (1.12) - הכנה והגשת תוצרים.
+ * כיתה ט' בלבד: הקצאת זמן לחקר (עדכון 8.7):
+ *  - בלוק חקר (שבוע שלם): השבוע שלפני 1.12 - כל השיעורים מוקדשים לעבודת החקר.
+ *    (תחרויות ה-STEM עצמן אינן נכנסות לשיעורים - הן מופיעות כתזכורות בלבד, כמו בז'/ח'.)
  *  - שיעורי חקר (יום הוראה אחד בשבוע): מאמצע אוקטובר (15.10) בקצב מתון - שיעור כל שבועיים,
  *    ומאמצע נובמבר (15.11) ועד הגשת הפוסטרים למחוז (15.2) - שיעור בכל שבוע.
  *    שיעור החקר תופס את יום ההוראה האחרון בשבוע; שאר השיעורים ממשיכים בתוכן, שנדחס בהתאם.
@@ -386,7 +426,8 @@ function reservedActivityWeeks(weeklyContent: number): {
   }
 
   return {
-    stemWeeks: stem.map((week) => ({ week, label: 'הכנה והגשת תוצרי תחרויות STEM', kind: 'תחרויות' as const })),
+    // השבוע שפונה מתוכן (לפני 1.12) מוקדש לעבודת החקר - לא לתחרויות (אלה תזכורות בלבד).
+    stemWeeks: stem.map((week) => ({ week, label: 'עבודה על עבודת החקר לקראת היריד', kind: 'חקר' as const })),
     researchWeeks: Array.from(new Set(research)).sort((a, b) => a - b),
   };
 }
@@ -412,6 +453,8 @@ export function buildPlan(input: EngineInput): Plan {
   const mtasks = scheduleModelTasks(modelTasksByGrade[input.grade], scheduled);
   // אבני הדרך של החקר (הגשות + ירידים) - כיתה ט' בלבד. הן תזכורות בלבד (לא תופסות שיעור).
   const research = input.grade === 9 ? researchTrack() : [];
+  // תזכורות הכנה לתחרויות STEM - בכל השכבות, כתזכורת (לא שיעור).
+  const reminders = stemReminders();
 
   // מבחן מפמ"ר (16.5)
   const mapmar: Milestone = { date: new Date(2027, 4, 16), label: 'מבחן מפמ"ר פנימי', kind: 'מבחן' };
@@ -435,6 +478,7 @@ export function buildPlan(input: EngineInput): Plan {
     scheduledTopics: scheduled,
     modelTasks: mtasks,
     research,
+    reminders,
     deadlines,
     alerts: [],
     capacityHours: Math.round(capacityHours),
@@ -712,8 +756,12 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
       .filter((x) => x.d != null && inWeek(x.d as Date))
       .map((x) => ({ name: x.ini.name, scope: x.ini.scope, keywords: x.ini.keywords ?? [] }));
     const sciDays = uniq((w.scienceDays ?? []).map(cleanEventName).filter(Boolean));
-    // תזכורות החקר (הגשות/ירידים) שנופלות בשבוע - מוצגות כתזכורת, לא כשיעור.
-    const reminders = uniq(plan.research.filter((m) => inWeek(m.date)).map((m) => m.label));
+    // תזכורות שנופלות בשבוע - מוצגות כ"תזכורת", לא כשיעור:
+    // אבני דרך החקר (ט') + תזכורות ההכנה לתחרויות STEM (כל השכבות).
+    const reminders = uniq([
+      ...plan.research.filter((m) => inWeek(m.date)).map((m) => m.label),
+      ...plan.reminders.filter((r) => inWeek(r.date)).map((r) => r.label),
+    ]);
     const base = {
       week: w.week,
       month: w.month,
