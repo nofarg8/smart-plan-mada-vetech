@@ -298,6 +298,14 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
 
   var calId = cal.getId();
 
+  // מנגנון בטיחות-זמן: Apps Script נהרג קשיח אחרי 6 דקות. המיילים כבר נשלחו לפני
+  // שהגענו לכאן, וסנכרון-ההפרש מהיר; אבל כגיבוי אחרון, אם עדכון היומן יתקרב לגבול -
+  // נעצור אותו יפה (partial) במקום להיהרג. מה שלא הספיק יושלם במסירה הבאה (הסנכרון
+  // משאיר את מה שכבר נוצר ומוסיף רק את החסר). כך הריצה לעולם לא "נתקעת".
+  var startTime = new Date().getTime();
+  var TIME_BUDGET_MS = 270000; // 4.5 דקות לעבודת היומן (בונוס בטיחות של ~90ש' עד ה-6 דקות)
+  var partial = false;
+
   // שיתוף (קריאה) עם המורה והרכז - קודם, כדי שהשיתוף לא ייפגע גם אם עדכון
   // האירועים ייעצר במגבלת זמן הריצה. אידמפוטנטי (אם כבר משותף, נתפס ב-catch).
   shareCalendar_(calId, teacherEmail);
@@ -338,6 +346,8 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
   var isoRe = /^\d{4}-\d{2}-\d{2}$/;
   var added = 0, kept = 0, colored = 0, colorErr = 0;
   for (var j = 0; j < events.length; j++) {
+    // גיבוי בטיחות: אם התקרבנו לגבול הזמן - עוצרים כאן (מה שנשאר יושלם במסירה הבאה).
+    if (new Date().getTime() - startTime > TIME_BUDGET_MS) { partial = true; break; }
     var ev = events[j];
     var title = String(ev.title || '').trim();
     if (!title || !isoRe.test(String(ev.start))) continue;
@@ -369,15 +379,21 @@ function syncCalendar_(name, key, events, teacherEmail, coordinatorEmail) {
   }
 
   // מחיקת מה שנשאר ברשימת הקיימים: אירועים שירדו מהתוכנית + כפילויות ישנות.
+  // אם נעצרנו על גבול הזמן (partial) - לא מוחקים, כדי לא למחוק אירועים שעדיין לא
+  // הספקנו להוסיף מחדש; המחיקה תתבצע במסירה הבאה כשהסנכרון יושלם.
   var removed = 0;
-  for (var delSig in existing) {
-    var ids = existing[delSig];
-    for (var y = 0; y < ids.length; y++) {
-      try { Calendar.Events.remove(calId, ids[y]); removed++; } catch (delErr) {}
+  if (!partial) {
+    for (var delSig in existing) {
+      var ids = existing[delSig];
+      for (var y = 0; y < ids.length; y++) {
+        if (new Date().getTime() - startTime > TIME_BUDGET_MS) { partial = true; break; }
+        try { Calendar.Events.remove(calId, ids[y]); removed++; } catch (delErr) {}
+      }
+      if (partial) break;
     }
   }
 
-  return { id: calId, count: added + kept, added: added, kept: kept, removed: removed, colored: colored, colorErrors: colorErr, deduped: deduped };
+  return { id: calId, count: added + kept, added: added, kept: kept, removed: removed, colored: colored, colorErrors: colorErr, deduped: deduped, partial: partial };
 }
 
 /** משתף יומן עם משתמש בהרשאת קריאה (דורש את שירות Google Calendar API). */
