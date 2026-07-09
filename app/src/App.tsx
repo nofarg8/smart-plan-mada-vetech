@@ -7,6 +7,8 @@ import { finalizePlan, listSchoolPlans, submitFeedback, FEEDBACK_URL, type Schoo
 interface Session {
   teacherName: string;
   teacherEmail: string;
+  /** מספר הנייד של המורה (למשל 050-1234567) - לסיוע בתקלות; זורם לטופס המשוב. */
+  teacherPhone?: string;
   school: SchoolStatus;
 }
 
@@ -65,16 +67,16 @@ function writeSavedState(s: SavedState | null): void {
 // ===== היסטוריית טופס הכניסה - השלמות תוך כדי הקלדה, כמו השלמת אימייל בדפדפן =====
 // נשמר מקומית בדפדפן של המורה בלבד; מוצג כרשימת הצעות (datalist) מתחת לכל שדה.
 const LOGIN_HISTORY_KEY = 'tomehet-login-history-v1';
-interface LoginHistory { names: string[]; emails: string[]; semels: string[]; rakaz: string[] }
+interface LoginHistory { names: string[]; emails: string[]; semels: string[]; rakaz: string[]; phones: string[] }
 function loadLoginHistory(): LoginHistory {
   try {
     const h = JSON.parse(localStorage.getItem(LOGIN_HISTORY_KEY) || '{}') as Partial<LoginHistory>;
-    return { names: h.names ?? [], emails: h.emails ?? [], semels: h.semels ?? [], rakaz: h.rakaz ?? [] };
+    return { names: h.names ?? [], emails: h.emails ?? [], semels: h.semels ?? [], rakaz: h.rakaz ?? [], phones: h.phones ?? [] };
   } catch {
-    return { names: [], emails: [], semels: [], rakaz: [] };
+    return { names: [], emails: [], semels: [], rakaz: [], phones: [] };
   }
 }
-function rememberLogin(entry: { name?: string; email?: string; semel?: string; rakaz?: string }): void {
+function rememberLogin(entry: { name?: string; email?: string; semel?: string; rakaz?: string; phone?: string }): void {
   try {
     const h = loadLoginHistory();
     const push = (list: string[], v?: string) =>
@@ -84,6 +86,7 @@ function rememberLogin(entry: { name?: string; email?: string; semel?: string; r
       emails: push(h.emails, entry.email),
       semels: push(h.semels, entry.semel),
       rakaz: push(h.rakaz, entry.rakaz),
+      phones: push(h.phones, entry.phone),
     }));
   } catch {
     /* אחסון חסום בדפדפן - בלי היסטוריה */
@@ -252,6 +255,9 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
   const [email, setEmail] = useState(hist.emails[0] ?? '');
   const [semel, setSemel] = useState(hist.semels[0] ?? '');
   const [rakazEmail, setRakazEmail] = useState(hist.rakaz[0] ?? '');
+  // נייד מפוצל: קידומת (למשל 050) + שאר המספר. משוחזר מהכניסה הקודמת.
+  const [phonePrefix, setPhonePrefix] = useState((hist.phones[0] ?? '').split('-')[0] ?? '');
+  const [phoneRest, setPhoneRest] = useState((hist.phones[0] ?? '').split('-')[1] ?? '');
   const [error, setError] = useState<ReactNode>('');
   const [checking, setChecking] = useState(false);
   const [found, setFound] = useState<SchoolStatus | null>(null);
@@ -287,7 +293,7 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
       await enterDebug();
       return;
     }
-    if (!name.trim() || !email.trim() || !semel.trim() || !rakazEmail.trim()) {
+    if (!name.trim() || !email.trim() || !semel.trim() || !rakazEmail.trim() || !phonePrefix.trim() || !phoneRest.trim()) {
       setError('יש למלא את כל השדות.');
       return;
     }
@@ -296,10 +302,15 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
       setError('כתובת האימייל שלך לא נראית תקינה - בדקי אותה שוב (למשל: name@gmail.com). לכתובת הזו יישלחו התוכנית והיומן שלך.');
       return;
     }
+    if (!/^05\d$/.test(phonePrefix.trim()) || !/^\d{7}$/.test(phoneRest.trim())) {
+      setError('מספר הנייד לא נראה תקין - קידומת של 3 ספרות (למשל 050) ואחריה 7 ספרות.');
+      return;
+    }
     if (!EMAIL_RE.test(rakazEmail.trim())) {
       setError('אימייל הרכז/ת לא נראה תקין - בדקי אותו שוב.');
       return;
     }
+    const teacherPhone = `${phonePrefix.trim()}-${phoneRest.trim()}`;
     setChecking(true);
     let school: SchoolStatus | null = null;
     try {
@@ -339,8 +350,8 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
       return;
     }
     // כניסה מוצלחת - נשמרת להשלמות בכניסה הבאה (בדפדפן הזה בלבד).
-    rememberLogin({ name, email, semel, rakaz: rakazEmail });
-    onEnter({ teacherName: name.trim(), teacherEmail: email.trim(), school });
+    rememberLogin({ name, email, semel, rakaz: rakazEmail, phone: teacherPhone });
+    onEnter({ teacherName: name.trim(), teacherEmail: email.trim(), teacherPhone, school });
   };
 
   return (
@@ -396,6 +407,24 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
               <label className="flab">אימייל</label>
               <input className="inp" type="email" name="teacher-email" autoComplete="email" list="hist-emails" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.org" />
               <datalist id="hist-emails">{hist.emails.map((v) => <option key={v} value={v} />)}</datalist>
+            </div>
+
+            <div className="field">
+              <label className="flab">נייד (לסיוע ותמיכה בתקלות)</label>
+              {/* המספר נכתב משמאל לימין כמקובל: קידומת ואז שאר המספר */}
+              <div className="phone-row" dir="ltr">
+                <input
+                  className="inp phone-prefix" name="phone-prefix" inputMode="numeric" autoComplete="tel-country-code"
+                  maxLength={3} value={phonePrefix} placeholder="050"
+                  onChange={(e) => setPhonePrefix(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                />
+                <span className="phone-dash">-</span>
+                <input
+                  className="inp phone-rest" name="phone-rest" inputMode="numeric" autoComplete="tel-national"
+                  maxLength={7} value={phoneRest} placeholder="1234567"
+                  onChange={(e) => setPhoneRest(e.target.value.replace(/\D/g, '').slice(0, 7))}
+                />
+              </div>
             </div>
 
             <div className="field">
@@ -708,6 +737,7 @@ function FeedbackWidget({ session }: { session: Session | null }) {
       name: v.name || session?.teacherName || '',
       email: v.email || session?.teacherEmail || '',
       school: v.school || session?.school.schoolName || '',
+      phone: v.phone || session?.teacherPhone || '',
     }));
     setOpen(true);
   };
