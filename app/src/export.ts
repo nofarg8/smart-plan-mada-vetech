@@ -237,11 +237,17 @@ export function printPlan(): void {
 
 /** מייצר PDF מאלמנט הדף ומחזיר base64 (בלי הקידומת data:). מיוצא לצורכי בדיקה מקומית. */
 export async function generatePdfBase64(element: HTMLElement): Promise<string> {
+  // מגבלת קנבס של הדפדפן (~32,767px גובה): גאנט ארוך במיוחד (ט' עם כל תתי-הנושא)
+  // חוצה אותה בהגדלה 1.4 - והחלק שמעבר יוצא מעוות/חתוך. מקטינים את ההגדלה בדיוק
+  // כמה שצריך כדי להישאר מתחת לגבול; גאנטים קצרים (ז'/ח') נשארים באיכות המלאה.
+  // כשמכווצים - מעלים את איכות ה-JPEG כדי לפצות על החדות.
+  const MAX_CANVAS_HEIGHT = 32000;
+  const scale = Math.min(1.4, MAX_CANVAS_HEIGHT / Math.max(1, element.scrollHeight));
   const opt = {
     margin: 6,
-    image: { type: 'jpeg' as const, quality: 0.85 },
+    image: { type: 'jpeg' as const, quality: scale < 1 ? 0.92 : 0.85 },
     html2canvas: {
-      scale: 1.4,
+      scale,
       useCORS: true,
       backgroundColor: '#ffffff',
       windowWidth: element.scrollWidth,
@@ -265,7 +271,9 @@ export async function generatePdfBase64(element: HTMLElement): Promise<string> {
       },
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-    pagebreak: { mode: ['css', 'legacy'] },
+    // avoid מפורש: לא לחתוך כרטיס שיעור/חודש/שורת צ'יפים באמצע בין עמודים.
+    // (מאז תתי-נושאי החובה הכרטיסים גבוהים; מסלול ה-CSS לבדו לא נאכף בעקביות.)
+    pagebreak: { mode: ['css', 'legacy'], avoid: ['.week-row.pdf-avoid', '.slot', '.mcard', '.wk-ctx', '.wk-meta'] },
   };
   try { await (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready; } catch { /* לא חוסם */ }
   const dataUri = await html2pdf().set(opt).from(element).outputPdf('datauristring');

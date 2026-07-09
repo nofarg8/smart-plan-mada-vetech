@@ -887,8 +887,13 @@ function WeekRow({ week, expandAll, school, onOverride }: {
         : new Set(),
     );
   }, [expandAll, week.slots]);
+  // עימוד PDF: שבוע "קצר" (מעט תתי-נושא) נשמר שלם בין עמודים - זה מצמצם את נקודות
+  // ההחלטה של מנוע העימוד של html2pdf ומונע חיתוכים. שבוע גבוה (עלול לחרוג מעמוד)
+  // נשאר בעימוד ברמת השיעור הבודד.
+  const totalSubs = week.slots.reduce((a, sl) => a + (sl.subItems?.length ?? 0), 0);
+  const pdfAvoid = week.vacation || totalSubs <= 14;
   return (
-    <div className={`week-row ${week.vacation ? 'vacation' : ''}`}>
+    <div className={`week-row ${week.vacation ? 'vacation' : ''} ${pdfAvoid ? 'pdf-avoid' : ''}`}>
       <div className="wk-meta">
         <span className="wk-num">שבוע {week.week}</span>
         <span className="wk-dates">{week.dateLabel}</span>

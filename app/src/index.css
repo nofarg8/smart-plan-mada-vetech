@@ -1042,6 +1042,17 @@ body {
    מוחל רק בזמן צילום ה-PDF (exporting), בערך זעיר שאינו נראה לעין. */
 .result-page.exporting, .result-page.exporting * { letter-spacing: 0.15px !important; }
 
+/* PDF: לא לחתוך כרטיס שיעור/חודש באמצע בין עמודים. הכללים שב-@media print לא חלים
+   על הצילום של html2pdf - חייבים אותם גם במצב exporting (מצב 'css' של html2pdf קורא
+   page-break מה-DOM החי). ברמת השיעור הבודד בלבד: שבוע שלם עלול להיות גבוה מעמוד,
+   ו-avoid עליו היה יוצר חורים לבנים ענקיים. */
+.result-page.exporting .slot,
+.result-page.exporting .mcard,
+.result-page.exporting .wk-ctx,
+.result-page.exporting .wk-meta { page-break-inside: avoid; break-inside: avoid; }
+/* שבוע קצר (רוב השבועות) נשמר שלם - פחות נקודות חיתוך בין עמודים */
+.result-page.exporting .week-row.pdf-avoid { page-break-inside: avoid; break-inside: avoid; }
+
 /* הסתרות נוספות ב-PDF */
 .result-page.exporting .steps-bar,
 .result-page.exporting .step-nav,
