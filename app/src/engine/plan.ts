@@ -3,7 +3,7 @@
 // פריסת נושאים על שבועות (מדלג על חופשות), שיבוץ משימות מודל, מסלול חקר, ודד-ליינים.
 
 import type { BreadthTopic, GradeBank, ModelTask } from '../data';
-import { banks, modelTasks as modelTasksByGrade, ganttWeeks, initiatives, officialHolidays, coreSubtopics } from '../data';
+import { banks, modelTasks as modelTasksByGrade, ganttWeeks, initiatives, officialHolidays, schoolDayObservances, coreSubtopics } from '../data';
 import type { Grade, GanttWeek } from '../data';
 
 export interface EngineInput {
@@ -169,6 +169,22 @@ function officialHolidayOn(date: Date): string | null {
     if (date >= r.start && date <= r.end) return r.name;
   }
   return null;
+}
+
+/** ימי ציון רשמיים שהם ימי לימודים (סיגד, ט"ו בשבט וכו'), מפוענחים פעם אחת. */
+const OBSERVANCE_DATES = schoolDayObservances
+  .map((o) => ({ name: o.name, date: parseDate(o.date) }))
+  .filter((r): r is { name: string; date: Date } => r.date != null);
+
+/**
+ * ממזג לשורת החגים של השבוע את ימי הציון שנופלים בו - לציון בלבד, בלי לבטל
+ * שיעור. דילוג אם הגאנט כבר מציין את היום (למשל "סיגד" מול "חג הסיגד").
+ */
+function addObservances(holidays: string[], inWeek: (d: Date) => boolean): void {
+  for (const o of OBSERVANCE_DATES) {
+    if (!inWeek(o.date)) continue;
+    if (!holidays.some((h) => h.includes(o.name) || o.name.includes(h))) holidays.push(o.name);
+  }
 }
 
 /** מקדם הוראה לשבוע: 0 חופשה, 0.5 שבוע מקוצר, 1 שבוע מלא. */
@@ -651,6 +667,7 @@ export function buildWeeklyPlan(plan: Plan): WeekCell[] {
       .filter((x) => x.d != null && inWeek(x.d as Date))
       .map((x) => x.ini.name);
     const holidays = uniq((w.holidays ?? []).map(cleanEventName).filter(Boolean));
+    addObservances(holidays, inWeek);
 
     const factor = weekFactor(w);
     return {
@@ -751,6 +768,7 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
     const inWeek = (d: Date) => (s && e ? d >= s && d <= e : false);
     const factor = weekFactor(w);
     const holidays = uniq((w.holidays ?? []).map(cleanEventName).filter(Boolean));
+    addObservances(holidays, inWeek);
     const inits: WeekInitiative[] = initiatives
       .map((ini) => ({ ini, d: parseDate(ini.date) }))
       .filter((x) => x.d != null && inWeek(x.d as Date))

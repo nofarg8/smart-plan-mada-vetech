@@ -3,7 +3,7 @@
 // משימות מודל, אבני דרך חקר, מבחנים, יוזמות/תחרויות, וחופשות רשמיות.
 
 import html2pdf from 'html2pdf.js';
-import { initiatives, officialHolidays } from './data';
+import { initiatives, officialHolidays, schoolDayObservances } from './data';
 import type { Plan, WeekSchedule } from './engine/plan';
 
 interface SessionLike {
@@ -148,6 +148,13 @@ function collectEvents(plan: Plan, weekly: WeekSchedule[]): IcsEvent[] {
     const s = parseDMY(h.start);
     const e = parseDMY(h.end);
     if (s && e) out.push({ start: s, end: nextDay(e), summary: `חופשה: ${h.name}`, category: 'חופשה' });
+  }
+
+  // ימי ציון רשמיים שהם ימי לימודים (סיגד, ט"ו בשבט, ל"ג בעומר, יום ירושלים) -
+  // נכנסים ליומן כאירוע יום-שלם, בלי לבטל את השיעור של אותו יום.
+  for (const o of schoolDayObservances) {
+    const d = parseDMY(o.date);
+    if (d) out.push({ start: d, end: nextDay(d), summary: o.name, category: 'אירוע' });
   }
 
   return out.sort((a, b) => a.start.getTime() - b.start.getTime());
