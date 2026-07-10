@@ -773,7 +773,10 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
       .map((ini) => ({ ini, d: parseDate(ini.date) }))
       .filter((x) => x.d != null && inWeek(x.d as Date))
       .map((x) => ({ name: x.ini.name, scope: x.ini.scope, keywords: x.ini.keywords ?? [] }));
-    const sciDays = uniq((w.scienceDays ?? []).map(cleanEventName).filter(Boolean));
+    // יום מדעי מהגאנט שהוא בעצם אותה יוזמה (למשל "שבוע החלל הישראלי") - מוצג
+    // פעם אחת בלבד, כיוזמה; הצ'יפ הכפול של "יום מדעי" מסונן.
+    const sciDays = uniq((w.scienceDays ?? []).map(cleanEventName).filter(Boolean))
+      .filter((sd) => !inits.some((ini) => sd.includes(ini.name) || ini.name.includes(sd)));
     // תזכורות שנופלות בשבוע - מוצגות כ"תזכורת", לא כשיעור:
     // אבני דרך החקר (ט') + תזכורות ההכנה לתחרויות STEM (כל השכבות).
     const reminders = uniq([
