@@ -239,20 +239,27 @@ export function printPlan(): void {
 
 /** מייצר PDF מאלמנט הדף ומחזיר base64 (בלי הקידומת data:). מיוצא לצורכי בדיקה מקומית. */
 export async function generatePdfBase64(element: HTMLElement): Promise<string> {
-  // מגבלת קנבס של הדפדפן (~32,767px גובה): גאנט ארוך במיוחד (ט' עם כל תתי-הנושא)
-  // חוצה אותה בהגדלה 1.4 - והחלק שמעבר יוצא מעוות/חתוך. מקטינים את ההגדלה בדיוק
-  // כמה שצריך כדי להישאר מתחת לגבול; גאנטים קצרים (ז'/ח') נשארים באיכות המלאה.
-  // כשמכווצים - מעלים את איכות ה-JPEG כדי לפצות על החדות.
+  // מגבלת קנבס של הדפדפן (~32,767px גובה): גאנט ארוך (ט' עם כל תתי-הנושא) חוצה
+  // אותה בהגדלה 1.4 - והחלק שמעבר יוצא מעוות/חתוך. מקטינים את ההגדלה בדיוק כמה
+  // שצריך כדי להישאר מתחת לגבול; גאנטים קצרים (ז'/ח') נשארים באיכות המלאה.
+  // ⚠️ המדידה חייבת להיעשות על ה-container של html2pdf ולא על הדף החי (תיקון 10.7):
+  // html2pdf פורס את העותק ברוחב עמוד ה-PDF (198mm ~ 748px) - צר מהמסך ולכן גבוה
+  // ממנו משמעותית - ומנוע העימוד שלו מוסיף div-ספייסרים שמגביהים עוד. לכן ההגדלה
+  // נקבעת באמצע השרשרת, אחרי toContainer, מהגובה האמיתי שיצולם.
   const MAX_CANVAS_HEIGHT = 32000;
-  const scale = Math.min(1.4, MAX_CANVAS_HEIGHT / Math.max(1, element.scrollHeight));
   const opt = {
     margin: 6,
-    image: { type: 'jpeg' as const, quality: scale < 1 ? 0.92 : 0.85 },
+    image: { type: 'jpeg' as const, quality: 0.85 },
     html2canvas: {
-      scale,
+      scale: 1.4, // נדרס בהמשך לפי הגובה הנמדד; 1.4 = תקרת האיכות
       useCORS: true,
       backgroundColor: '#ffffff',
-      windowWidth: element.scrollWidth,
+      // ⚠️ חייב להיות רוחב החלון האמיתי (תיקון 10.7): מנוע העימוד של html2pdf מודד
+      // את העותק במסמך הראשי (media queries לפי חלון הדפדפן), אבל html2canvas מצלם
+      // ב-iframe שרוחבו windowWidth. אם השניים חוצים נקודת שבירה של media query
+      // (720/1080), הפריסה בצילום שונה מזו שנמדדה - הריפודים לא מתיישרים לעמודים
+      // והטקסט נחתך בין עמודים. window.innerWidth מיישר את שניהם לאותה פריסה.
+      windowWidth: window.innerWidth,
       // מצב הייצוא מוחל ישירות על העותק שהספרייה מצלמת - מבטיח PDF נקי:
       // בלי כפתורי עריכה/פקדים, עם כל תתי-הנושא פתוחים, בלי זום ובלי sticky.
       onclone: (doc: Document) => {
@@ -273,14 +280,97 @@ export async function generatePdfBase64(element: HTMLElement): Promise<string> {
       },
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' as const },
-    // avoid מפורש: לא לחתוך כרטיס שיעור/חודש/שורת צ'יפים באמצע בין עמודים.
-    // (מאז תתי-נושאי החובה הכרטיסים גבוהים; מסלול ה-CSS לבדו לא נאכף בעקביות.)
-    pagebreak: { mode: ['css', 'legacy'], avoid: ['.week-row.pdf-avoid', '.slot', '.mcard', '.wk-ctx', '.wk-meta'] },
+    // avoid מפורש: לא לחתוך כרטיס שיעור/שורת צ'יפים באמצע בין עמודים.
+    // ⚠️ רק אלמנטים שההורה שלהם בזרימה אנכית (block/flex-column)! html2pdf מזריק
+    // div-ספייסר לפני האלמנט בתוך ההורה - בתוך grid (.week-row, .month-grid)
+    // הספייסר תופס תא, והתוכן נמעך לעמודה צרה (הבאג "PDF הרוס" מ-10.7).
+    // לכן אסור כאן .wk-meta ו-.mcard; מבט החודשים מוגן דרך .month-grid כיחידה.
+    pagebreak: {
+      mode: ['css', 'legacy'],
+      avoid: [
+        '.week-row.pdf-avoid', '.slot', '.wk-ctx', '.month-grid', '.wk-month',
+        '.lbl', '.lbl-hero', '.hero-sub', '.wk-num', '.wk-dates', '.wk-hours', '.wk-tag-short',
+      ],
+    },
   };
   try { await (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready; } catch { /* לא חוסם */ }
-  const dataUri = await html2pdf().set(opt).from(element).outputPdf('datauristring');
+  // שלב 1: בונים את העותק המצולם (toContainer מפעיל גם את מנוע העימוד ומזריק ספייסרים).
+  const worker = html2pdf().set(opt).from(element).toContainer();
+  // שלב 2: מודדים את הגובה האמיתי וקובעים את ההגדלה - לפני הצילום (toCanvas).
+  // ה-callback של then נקשר (bind) ל-worker עצמו; prop/opt הם פנימיים יציבים שלו.
+  let measuredH = 0; // גובה העותק (כולל ריפודי עימוד) - ב-px של פריסת המסמך.
+  let padPageH = 0; // גובה העמוד שלפיו הוזרקו ריפודי העימוד (inner.px.height).
+  await worker.then(function (this: PdfWorkerInternals) {
+    measuredH = this.prop?.container?.scrollHeight || element.scrollHeight * 2;
+    padPageH = this.prop?.pageSize?.inner?.px?.height || 0;
+    const scale = Math.min(1.4, MAX_CANVAS_HEIGHT / Math.max(1, measuredH));
+    this.opt.html2canvas.scale = scale;
+    // כשמכווצים - מעלים את איכות ה-JPEG כדי לפצות על החדות.
+    this.opt.image.quality = scale < 1 ? 0.92 : 0.85;
+    console.debug('[pdf] גובה נמדד:', measuredH, 'px | הגדלה:', scale.toFixed(3));
+  });
+  // שלב 3: צילום.
+  await worker.toCanvas();
+  const canvas = (await worker.get('canvas')) as HTMLCanvasElement;
+  // שלב 4: יישור רשת החיתוך לרשת הריפודים (תיקון 10.7, לא להסיר): הריפודים הוזרקו
+  // לפי גובה עמוד של padPageH (למשל 1077px), אבל toPdf חותך לפי
+  // floor(canvas.width*ratio) שיוצא שבריר-פיקסל גדול יותר - ואז כל אלמנט שנדחף
+  // בדיוק לראש עמוד מתחיל 1-2px לפני קו החיתוך ונחתך לו פס דק. מכיילים את ratio
+  // כך שהחיתוך יהיה זהה (או זעיר-קטן, לכיוון הבטוח) לרשת הריפודים.
+  let pageHCanvas = 0; // גובה עמוד בפיקסלי canvas, אחרי הכיול.
+  if (canvas && padPageH > 0 && measuredH > 0) {
+    pageHCanvas = Math.floor(padPageH * (canvas.height / measuredH));
+    await worker.then(function (this: PdfWorkerInternals) {
+      const inner = this.prop?.pageSize?.inner;
+      if (inner && canvas.width > 0) inner.ratio = pageHCanvas / canvas.width;
+    });
+  }
+  // שלב 5: הפקה.
+  await worker.toPdf();
+  const pdf = (await worker.get('pdf')) as JsPdfLike;
+  // עמוד-שארית ריק: תחתית הדף היא padding ריק, ולכן ה-slice האחרון יוצא לא פעם
+  // עמוד לבן. מוחקים אותו רק אם רצועת השארית על הקנבס באמת ריקה (לבן טהור).
+  if (pageHCanvas > 0 && canvas && pdf.getNumberOfPages() > 1) {
+    const rem = canvas.height % pageHCanvas;
+    if (rem > 0 && isCanvasBandBlank(canvas, canvas.height - rem, rem)) {
+      pdf.deletePage(pdf.getNumberOfPages());
+    }
+  }
+  const dataUri: string = pdf.output('datauristring');
   const i = dataUri.indexOf('base64,');
   return i >= 0 ? dataUri.slice(i + 7) : dataUri;
+}
+
+// הפנימיים של ה-worker של html2pdf שנחוצים למדידת הגובה באמצע השרשרת
+// (יציבים בגרסה המותקנת 0.14; הספרייה מביאה טיפוסים משלה שלא חושפים אותם).
+interface PdfWorkerInternals {
+  prop: {
+    container?: HTMLElement;
+    pageSize?: { inner?: { ratio?: number; px?: { height?: number } } };
+  };
+  opt: { html2canvas: { scale: number }; image: { quality: number } };
+}
+
+// הממשק הצר של jsPDF שבו משתמשים למחיקת עמוד-שארית ריק.
+interface JsPdfLike {
+  getNumberOfPages(): number;
+  deletePage(n: number): void;
+  output(type: string): string;
+}
+
+/** האם רצועה אופקית על הקנבס ריקה (לבן טהור, כמו רקע הצילום)? */
+function isCanvasBandBlank(canvas: HTMLCanvasElement, y: number, h: number): boolean {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return false;
+  try {
+    const d = ctx.getImageData(0, Math.max(0, y), canvas.width, Math.max(1, h)).data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] < 250 || d[i + 1] < 250 || d[i + 2] < 250) return false;
+    }
+    return true;
+  } catch {
+    return false; // אם אי אפשר לקרוא את הקנבס - עדיף להשאיר את העמוד.
+  }
 }
 
 export interface DeliverResult {

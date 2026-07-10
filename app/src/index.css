@@ -1166,14 +1166,30 @@ body {
    מוחל רק בזמן צילום ה-PDF (exporting), בערך זעיר שאינו נראה לעין. */
 .result-page.exporting, .result-page.exporting * { letter-spacing: 0.15px !important; }
 
-/* PDF: לא לחתוך כרטיס שיעור/חודש באמצע בין עמודים. הכללים שב-@media print לא חלים
+/* PDF: לא לחתוך כרטיס שיעור באמצע בין עמודים. הכללים שב-@media print לא חלים
    על הצילום של html2pdf - חייבים אותם גם במצב exporting (מצב 'css' של html2pdf קורא
-   page-break מה-DOM החי). ברמת השיעור הבודד בלבד: שבוע שלם עלול להיות גבוה מעמוד,
-   ו-avoid עליו היה יוצר חורים לבנים ענקיים. */
+   page-break מה-DOM החי).
+   ⚠️ קריטי: avoid מותר רק לאלמנט שההורה שלו בזרימה אנכית (block / flex-column).
+   html2pdf מממש avoid בהזרקת div-ספייסר לפני האלמנט בתוך ההורה שלו - בתוך grid
+   (.week-row, .month-grid) הספייסר תופס תא בגריד, דוחף את התוכן לעמודה הלא-נכונה,
+   וכל השבוע נמעך לעמודה צרה (הבאג "PDF הרוס" מ-10.7). לכן אין avoid על
+   .wk-meta (ההורה .week-row הוא grid) ולא על .mcard (ההורה .month-grid הוא grid). */
 .result-page.exporting .slot,
-.result-page.exporting .mcard,
-.result-page.exporting .wk-ctx,
-.result-page.exporting .wk-meta { page-break-inside: avoid; break-inside: avoid; }
+.result-page.exporting .wk-ctx { page-break-inside: avoid; break-inside: avoid; }
+/* פס חודש (הורה: .weekly-plan, block) וכותרות (הורה: .result-page/.step-page, block) */
+.result-page.exporting .wk-month,
+.result-page.exporting .lbl,
+.result-page.exporting .lbl-hero,
+.result-page.exporting .hero-sub { page-break-inside: avoid; break-inside: avoid; }
+/* שורות המטא של שבוע גבוה (שאין לו pdf-avoid): ההורה .wk-meta הוא flex-column,
+   כך שהריפוד רק דוחף אותן למטה בתוך התא - בלי לשבור את הגריד של השבוע. */
+.result-page.exporting .wk-num,
+.result-page.exporting .wk-dates,
+.result-page.exporting .wk-hours,
+.result-page.exporting .wk-tag-short { page-break-inside: avoid; break-inside: avoid; }
+/* מבט החודשים נשמר שלם כיחידה (ההורה שלו הוא זרימת block רגילה); אם הוא גבוה
+   מעמוד שלם - html2pdf מדלג על הכלל מעצמו וייתכן חיתוך, אבל בלי שבירת הגריד. */
+.result-page.exporting .month-grid { page-break-inside: avoid; break-inside: avoid; }
 /* שבוע קצר (רוב השבועות) נשמר שלם - פחות נקודות חיתוך בין עמודים */
 .result-page.exporting .week-row.pdf-avoid { page-break-inside: avoid; break-inside: avoid; }
 
