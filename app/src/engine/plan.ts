@@ -187,11 +187,25 @@ function addObservances(holidays: string[], inWeek: (d: Date) => boolean): void 
   }
 }
 
+/**
+ * חגי עדות של עובדי הוראה (נוצרים/מוסלמים/דרוזים) שהגאנט המחוזי מציין -
+ * אינם חופשה בית ספרית לפי הודעת משרד החינוך (הם בסעיפי "מועדי החגים לעובדי
+ * הוראה"). מוסתרים מתצוגת המורה ולא משפיעים על קיבולת השבוע (הוראת נופר 10.7).
+ */
+const STAFF_HOLIDAY = /ההתגלות|חג המולד|ראשית השנה|השישי הגדול|פסחא|העלייה השמיימה|שבועות נוצרי|עיד אל|עיד- אל|חג הקורבן|ההג'רית|הנביא אליהו|הנביא שועייב|הנביא סבלאן/;
+
+/** מסנן מרשימת חגים של שבוע את חגי העדות של עובדי ההוראה. */
+function withoutStaffHolidays(holidays: string[]): string[] {
+  return holidays.filter((h) => !STAFF_HOLIDAY.test(h));
+}
+
 /** מקדם הוראה לשבוע: 0 חופשה, 0.5 שבוע מקוצר, 1 שבוע מלא. */
 function weekFactor(w: GanttWeek): number {
-  const txt = (w.holidays ?? []).join(' ');
+  // חגי עדות של עובדי הוראה לא מקצרים את השבוע (למשל "חג הקורבן" 16-20.5 הוא
+  // שבוע לימודים מלא; "ראש השנה ההג'רית" נתפס בטעות בתבנית "ראש השנה").
+  const txt = withoutStaffHolidays(w.holidays ?? []).join(' ');
   if (/סוכות|פסח|חנוכה|יציאה לחופש/.test(txt)) return 0;
-  if (/ראש השנה|כיפור|פורים|שבועות|עצמאות|חג הקורבן|גשר/.test(txt)) return 0.5;
+  if (/ראש השנה|כיפור|פורים|שבועות|עצמאות|גשר/.test(txt)) return 0.5;
   return 1;
 }
 
@@ -568,10 +582,10 @@ export function buildMonthlyCalendar(plan: Plan): MonthCell[] {
     }
   }
 
-  // חגים ואירועים לכל חודש - מנוקים ומנוקי-כפילויות.
+  // חגים ואירועים לכל חודש - מנוקים ומנוקי-כפילויות (בלי חגי עדות של עובדי הוראה).
   const holidaysByMonth = new Map<string, string[]>();
   for (const w of teachingWeeks()) {
-    for (const h of w.holidays ?? []) {
+    for (const h of withoutStaffHolidays(w.holidays ?? [])) {
       const name = cleanEventName(h);
       if (!name) continue;
       if (!holidaysByMonth.has(w.month)) holidaysByMonth.set(w.month, []);
@@ -666,7 +680,7 @@ export function buildWeeklyPlan(plan: Plan): WeekCell[] {
       .map((ini) => ({ ini, d: parseDate(ini.date) }))
       .filter((x) => x.d != null && inWeek(x.d as Date))
       .map((x) => x.ini.name);
-    const holidays = uniq((w.holidays ?? []).map(cleanEventName).filter(Boolean));
+    const holidays = uniq(withoutStaffHolidays(w.holidays ?? []).map(cleanEventName).filter(Boolean));
     addObservances(holidays, inWeek);
 
     const factor = weekFactor(w);
@@ -767,7 +781,7 @@ export function buildWeeklySchedule(plan: Plan, teacherSlots: TeacherSlot[], cus
     const e = weekEnd(w);
     const inWeek = (d: Date) => (s && e ? d >= s && d <= e : false);
     const factor = weekFactor(w);
-    const holidays = uniq((w.holidays ?? []).map(cleanEventName).filter(Boolean));
+    const holidays = uniq(withoutStaffHolidays(w.holidays ?? []).map(cleanEventName).filter(Boolean));
     addObservances(holidays, inWeek);
     const inits: WeekInitiative[] = initiatives
       .map((ini) => ({ ini, d: parseDate(ini.date) }))
