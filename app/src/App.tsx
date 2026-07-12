@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { fetchLiveGantt, setLiveGantt, fetchSchool, banks, topicsByDomain, modelTasks, coreSubtopics, type SchoolStatus } from './data';
 import type { Grade } from './data';
 import { buildPlan, buildMonthlyCalendar, buildWeeklySchedule, type Plan, type WeekSchedule, type TeacherSlot, type CustomEvent } from './engine/plan';
@@ -242,6 +242,77 @@ const HOME_FEATURES: { icon: () => ReactNode; title: string; text: string }[] = 
   },
 ];
 
+/* ---------- גלריית תוצרים בעמוד הבית ---------- */
+// תמונות אמיתיות של התוצר (public/showcase). מראות למורה מה היא מקבלת בפועל -
+// הגאנט האישי, היומן, ההתאמה החכמה וההפקה בלחיצה - עוד לפני שהיא מתחילה.
+const SHOWCASE: { src: string; caption: string }[] = [
+  { src: '/showcase/gantt-annual.jpg', caption: 'הגאנט השבועי האישי שלך - שיעור אחר שיעור, לכל השנה' },
+  { src: '/showcase/gantt-grade7.jpg', caption: 'נושא בכל שיעור, לפי המפרט הרשמי של משרד החינוך' },
+  { src: '/showcase/model-tasks.jpg', caption: 'משימות המודל וימי הציון משובצים במקום הנכון' },
+  { src: '/showcase/reminders.jpg', caption: 'תזכורות ברגע הנכון - הגשות, ירידים ותחרויות STEM' },
+  { src: '/showcase/calendar.jpg', caption: 'יומן Google אישי שמופיע ומתעדכן לבד' },
+  { src: '/showcase/shortage.jpg', caption: 'חסרות שעות? המערכת מתאימה את התוכנית בשקיפות מלאה' },
+  { src: '/showcase/finalize.jpg', caption: 'הכל מוכן בלחיצה אחת - PDF, יומן ועותק לרכזת' },
+  { src: '/showcase/plan-sidebar.jpg', caption: 'כל שיעור עם תתי-נושא: חובה, הרחבה ורשות' },
+];
+
+/** גלריית תוצרים עם תצוגה מוגדלת (lightbox) בלחיצה. */
+function Showcase() {
+  // אינדקס התמונה הפתוחה בתצוגה המוגדלת, או null כשסגור.
+  const [open, setOpen] = useState<number | null>(null);
+  const close = () => setOpen(null);
+  const go = useCallback((dir: number) => {
+    setOpen((i) => (i == null ? i : (i + dir + SHOWCASE.length) % SHOWCASE.length));
+  }, []);
+  // ניווט במקלדת בתצוגה המוגדלת: Esc סוגר, חצים מדפדפים (RTL - הפוך).
+  useEffect(() => {
+    if (open == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+      else if (e.key === 'ArrowRight') go(1);
+      else if (e.key === 'ArrowLeft') go(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, go]);
+
+  return (
+    <section className="showcase">
+      <div className="sc-head">
+        <h2 className="sc-title">כך תיראה התוכנית שתקבלי</h2>
+        <p className="sc-sub">הצצה לתוצרים אמיתיים - הגאנט האישי, היומן וההפקה בלחיצה. לחצי על תמונה להגדלה.</p>
+      </div>
+      <div className="sc-grid">
+        {SHOWCASE.map((s, i) => (
+          <button key={s.src} type="button" className="sc-card" onClick={() => setOpen(i)}>
+            <span className="sc-thumb">
+              <img src={s.src} alt={s.caption} loading="lazy" />
+              <span className="sc-zoom" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.35-4.35M11 8v6M8 11h6" />
+                </svg>
+              </span>
+            </span>
+            <span className="sc-cap">{s.caption}</span>
+          </button>
+        ))}
+      </div>
+
+      {open != null && (
+        <div className="sc-lb" onClick={close} role="dialog" aria-modal="true">
+          <button type="button" className="sc-lb-close" onClick={close} aria-label="סגירה">×</button>
+          <button type="button" className="sc-lb-nav prev" onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="הקודם">›</button>
+          <figure className="sc-lb-fig" onClick={(e) => e.stopPropagation()}>
+            <img src={SHOWCASE[open].src} alt={SHOWCASE[open].caption} />
+            <figcaption>{SHOWCASE[open].caption}</figcaption>
+          </figure>
+          <button type="button" className="sc-lb-nav next" onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="הבא">‹</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 /* ---------- מסך פתיחה + הזדהות ---------- */
 /** בדיקת תקינות בסיסית לכתובת אימייל - טעות הקלדה במייל מפילה את היומן והמיילים. */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -389,6 +460,9 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
           ))}
         </div>
       </section>
+
+      {/* ===== גלריית תוצרים - מה המורה מקבלת בפועל ===== */}
+      <Showcase />
 
       <div className="login-body" ref={formRef}>
         <div className="login-card">

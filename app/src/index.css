@@ -294,6 +294,140 @@ body {
   .hero-atom-a { width: 200px; height: 200px; top: -50px; inset-inline-start: -70px; }
   .hero-atom-b { width: 150px; height: 150px; bottom: auto; top: 30px; inset-inline-end: -60px; }
 }
+
+/* ===== גלריית התוצרים ===== */
+.showcase {
+  position: relative;
+  padding: 56px 24px 60px;
+  background:
+    radial-gradient(900px 340px at 50% -40px, var(--teal-tint) 0%, rgba(238, 245, 245, 0) 70%),
+    linear-gradient(180deg, #fbf8f2 0%, #fdfcf9 100%);
+  border-block: 1px solid var(--card-border-2);
+}
+.sc-head { text-align: center; max-width: 720px; margin: 0 auto 34px; }
+.sc-title {
+  font: 800 27px 'Rubik'; color: var(--heading); margin: 0 0 8px;
+}
+.sc-title::after {
+  content: ''; display: block; width: 96px; height: 4px; margin: 10px auto 0;
+  border-radius: 999px; background: linear-gradient(90deg, var(--mustard), var(--mustard-tint-2));
+}
+.sc-sub { font: 400 15.5px/1.6 'Rubik'; color: var(--muted); margin: 0; }
+
+.sc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+.sc-card {
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 0;
+  cursor: pointer;
+  text-align: right;
+  font: inherit;
+  box-shadow: 0 4px 16px rgba(43, 39, 34, 0.05);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.sc-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 16px 34px rgba(28, 78, 94, 0.15);
+  border-color: var(--teal-tint-2);
+}
+.sc-card:focus-visible { outline: 3px solid var(--teal-2); outline-offset: 2px; }
+.sc-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  background: var(--teal-tint);
+  overflow: hidden;
+}
+.sc-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover; object-position: top center;
+  display: block;
+  transition: transform 0.35s ease;
+}
+.sc-card:hover .sc-thumb img { transform: scale(1.05); }
+.sc-zoom {
+  position: absolute; inset-block-start: 10px; inset-inline-end: 10px;
+  width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; background: rgba(28, 78, 94, 0.82);
+  opacity: 0; transform: scale(0.85);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  backdrop-filter: blur(2px);
+}
+.sc-card:hover .sc-zoom { opacity: 1; transform: scale(1); }
+.sc-cap {
+  font: 500 14px/1.55 'Rubik'; color: var(--heading-2);
+  padding: 14px 16px 16px;
+}
+
+/* תצוגה מוגדלת (lightbox) */
+.sc-lb {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 28px;
+  background: rgba(18, 30, 34, 0.88);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out both;
+}
+.sc-lb-fig {
+  margin: 0; max-width: min(1100px, 92vw); max-height: 88vh;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  animation: riseIn 0.28s ease-out both;
+}
+.sc-lb-fig img {
+  max-width: 100%; max-height: 78vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  background: #fff;
+}
+.sc-lb-fig figcaption {
+  font: 600 15.5px/1.5 'Rubik'; color: #fff; text-align: center;
+  max-width: 640px;
+}
+.sc-lb-close {
+  position: absolute; inset-block-start: 18px; inset-inline-end: 22px;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: none; cursor: pointer;
+  font: 300 30px/1 'Rubik'; color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 0.15s ease;
+}
+.sc-lb-close:hover { background: rgba(255, 255, 255, 0.28); }
+.sc-lb-nav {
+  flex: 0 0 auto;
+  width: 52px; height: 52px; border-radius: 50%;
+  border: none; cursor: pointer;
+  font: 400 30px/1 'Rubik'; color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.sc-lb-nav:hover { background: rgba(255, 255, 255, 0.28); transform: scale(1.08); }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-card, .sc-thumb img, .sc-lb, .sc-lb-fig { animation: none; transition: none; }
+  .sc-card:hover .sc-thumb img { transform: none; }
+}
+@media (max-width: 620px) {
+  .showcase { padding: 40px 16px 44px; }
+  .sc-grid { grid-template-columns: 1fr; max-width: 420px; gap: 16px; }
+  .sc-title { font-size: 23px; }
+  .sc-lb { padding: 14px; }
+  .sc-lb-nav { width: 42px; height: 42px; font-size: 26px; }
+  .sc-lb-close { inset-block-start: 10px; inset-inline-end: 12px; }
+}
+
 .login-body {
   flex: 1;
   display: flex; align-items: center; justify-content: center;
