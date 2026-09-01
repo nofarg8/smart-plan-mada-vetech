@@ -459,9 +459,10 @@ export async function finalizePlan(plan: Plan, session: SessionLike, weekly: Wee
 // ===== משוב ודיווח תקלות (הכפתור הצף) =====
 // נשלח ל-Web App נפרד (apps-script/feedback.gs) שרץ בחשבון האישי של נופר
 // (gergrood@gmail.com), לא בחשבון ההתיישבותי - הדיווחים נאספים בגיליון אצלה.
+// מייל ההתראה על תקלה נשלח לאמנון ולהתיישבותי (NOTIFY_EMAIL ב-feedback.gs), לא לנופר.
 // כל עוד הכתובת ריקה - הכפתור לא מוצג באתר (יופעל ברגע שנופר תפרסם ותשלח URL).
 export const FEEDBACK_URL =
-  'https://script.google.com/macros/s/AKfycbyFb6fi_XepNoSMZyD_UcAUx7tSehc8G7hPb0kTK6Px745pP7A6gGpn6NYN_6ST8gX6/exec';
+  'https://script.google.com/macros/s/AKfycbzR0d8iAr5-7SA_9c67dfuFQCEbDIXOelOScNC-VVvmtxw6QeNM66ino67g_X_ShgV5/exec';
 
 /** שולח משוב/דיווח תקלה. מחזיר הצלחה; בפיתוח בלי כתובת - מדמה הצלחה לבדיקת החוויה. */
 export async function submitFeedback(payload: Record<string, unknown>): Promise<boolean> {
