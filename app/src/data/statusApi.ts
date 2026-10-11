@@ -8,6 +8,13 @@ import { type SchoolStatus } from './mockStatus';
 const STATUS_CSV =
   'https://docs.google.com/spreadsheets/d/e/2PACX-1vTaABzxENIWFfS9Cr9J1OqoFX2BCpVnnJndpRyO8oRgPoVq1EXlUMoTWuREU-GP9n1uxrAYKl5xGWDq/pub?gid=1974770138&single=true&output=csv';
 
+// לשונית "רכזים נוספים" בסטטוס: סמל מוסד | מייל | שם (לידיעה בלבד). כאן נופר
+// מוסיפה מי שצריך/ה להיכנס לבית ספר שכבר יש לו רכז/ת רשומ/ה - מנהלת אשכול,
+// רכזת פדגוגית, רכזת נוספת. שורה כאן = כתובת נוספת שמאפשרת כניסה, ותו לא:
+// פרטי בית הספר והמייל שאליו נשלחות התוכניות נשארים לפי לשונית ה-API.
+const EXTRA_COORDINATORS_CSV =
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vTaABzxENIWFfS9Cr9J1OqoFX2BCpVnnJndpRyO8oRgPoVq1EXlUMoTWuREU-GP9n1uxrAYKl5xGWDq/pub?gid=281228248&single=true&output=csv';
+
 // אינדקסי העמודות בפלט ה-CSV.
 const COL = {
   school: 0,
@@ -86,6 +93,28 @@ function toSchool(row: string[], semel: string, authorizedEmails: string[]): Sch
   };
 }
 
+// קאש לכתובות הנוספות. אם הלשונית לא נגישה (לא פורסמה, או תקלת רשת) מחזירים
+// מפה ריקה - הכניסה פשוט עובדת לפי הרכז/ת הרשומ/ה, כמו לפני השינוי.
+let extraPromise: Promise<Map<string, string[]>> | null = null;
+function getExtraEmails(): Promise<Map<string, string[]>> {
+  if (!extraPromise) {
+    extraPromise = fetch(EXTRA_COORDINATORS_CSV)
+      .then((r) => { if (!r.ok) throw new Error('extra http ' + r.status); return r.text(); })
+      .then((text) => {
+        const map = new Map<string, string[]>();
+        for (const row of parseCsv(text).slice(1)) {
+          const semel = (row[0] || '').replace(/\D/g, '');
+          const email = (row[1] || '').trim();
+          if (!semel || !email) continue;
+          map.set(semel, [...(map.get(semel) ?? []), email]);
+        }
+        return map;
+      })
+      .catch(() => new Map<string, string[]>());
+  }
+  return extraPromise;
+}
+
 /** האם יש בשורה נתוני שעות - כלומר זו הגשת סטטוס אמיתית ולא שורת אימות בלבד. */
 function hasHours(row: string[]): boolean {
   return [COL.h7, COL.h8, COL.h9].some((c) => num(row[c] || '') != null);
@@ -96,7 +125,7 @@ export async function fetchSchool(semel: string): Promise<SchoolStatus | null> {
   const s = String(semel).replace(/\D/g, '');
   if (!s) return null;
   try {
-    const rows = await getRows();
+    const [rows, extra] = await Promise.all([getRows(), getExtraEmails()]);
     // לאותו סמל מוסד יכולות להיות כמה שורות: הגשות חוזרות של הסטטוס, וגם שורות
     // שנוספו רק כדי לאפשר כניסה לאדם נוסף בבית הספר (מנהלת אשכול, רכזת נוספת).
     const matches = rows.slice(1).filter((r) => (r[COL.school] || '').replace(/\D/g, '').includes(s));
@@ -106,9 +135,12 @@ export async function fetchSchool(semel: string): Promise<SchoolStatus | null> {
     const withHours = matches.filter(hasHours);
     const dataRows = withHours.length ? withHours : matches;
     const base = dataRows[dataRows.length - 1];
-    // כל הכתובות של בית הספר מאפשרות כניסה - מכל השורות, כולל שורות האימות.
-    const emails = matches
-      .map((r) => (r[COL.coordEmail] || '').trim())
+    // כל הכתובות של בית הספר מאפשרות כניסה: מכל שורות הסטטוס, ובנוסף הכתובות
+    // שנרשמו ללשונית "רכזים נוספים".
+    const emails = [
+      ...matches.map((r) => (r[COL.coordEmail] || '').trim()),
+      ...(extra.get(s) ?? []),
+    ]
       .filter(Boolean)
       .filter((e, i, a) => a.findIndex((x) => x.toLowerCase() === e.toLowerCase()) === i);
     return toSchool(base, s, emails);
