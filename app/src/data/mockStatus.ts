@@ -6,6 +6,12 @@ export interface SchoolStatus {
   schoolName: string;
   coordinatorName: string;
   coordinatorEmail: string;
+  /**
+   * כל כתובות המייל שמופיעות בסטטוס לאותו סמל מוסד - הרכז/ת וגם מי שנוסף/ה
+   * לאימות בלבד (מנהלת אשכול, רכזת פדגוגית, רכזת נוספת). כל אחת מהן מאפשרת
+   * כניסה. `coordinatorEmail` נשאר הרכז/ת הראשי/ת - אליו/ה נשלחים המיילים.
+   */
+  authorizedEmails: string[];
   /** ש"ש לתלמיד לפי שכבה. */
   hoursByGrade: Record<number, number>;
   hasLab?: boolean;

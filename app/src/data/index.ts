@@ -8,7 +8,7 @@ import { initiatives } from './initiatives';
 import { officialHolidays, schoolDayObservances } from './holidays';
 import { fetchLiveGantt } from './liveGantt';
 import { type SchoolStatus } from './mockStatus';
-import { fetchSchool } from './statusApi';
+import { fetchSchool, isAuthorizedEmail } from './statusApi';
 import { coreSubtopics } from './coreSubtopics';
 
 export * from './types';
@@ -18,7 +18,7 @@ export { ganttWeeks, teachingWeeks, setLiveGantt };
 export { initiatives };
 export { officialHolidays, schoolDayObservances };
 export { fetchLiveGantt };
-export { fetchSchool };
+export { fetchSchool, isAuthorizedEmail };
 export type { SchoolStatus };
 
 // כיתה ט' - אין משימות מודל (מקור: נופר). הבנק בכל זאת נכלל.

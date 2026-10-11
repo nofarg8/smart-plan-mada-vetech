@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { fetchLiveGantt, setLiveGantt, fetchSchool, banks, topicsByDomain, modelTasks, coreSubtopics, type SchoolStatus } from './data';
+import { fetchLiveGantt, setLiveGantt, fetchSchool, isAuthorizedEmail, banks, topicsByDomain, modelTasks, coreSubtopics, type SchoolStatus } from './data';
 import type { Grade } from './data';
 import { buildPlan, buildMonthlyCalendar, buildWeeklySchedule, type Plan, type WeekSchedule, type TeacherSlot, type CustomEvent } from './engine/plan';
 import { finalizePlan, listSchoolPlans, submitFeedback, FEEDBACK_URL, type SchoolPlanFile } from './export';
@@ -21,7 +21,7 @@ function debugSession(): Session {
   return {
     teacherName: 'נופר גרגרוד',
     teacherEmail: 'gergrood@gmail.com',
-    school: { semel: 'DB', schoolName: 'בית ספר לדוגמה', coordinatorName: 'נופר גרגרוד', coordinatorEmail: 'gergrood@gmail.com', hoursByGrade: { 7: 5, 8: 6 } },
+    school: { semel: 'DB', schoolName: 'בית ספר לדוגמה', coordinatorName: 'נופר גרגרוד', coordinatorEmail: 'gergrood@gmail.com', authorizedEmails: ['gergrood@gmail.com'], hoursByGrade: { 7: 5, 8: 6 } },
   };
 }
 
@@ -356,7 +356,7 @@ function LoginScreen({ onEnter, onCoord }: { onEnter: (s: Session) => void; onCo
       );
       return;
     }
-    if (school.coordinatorEmail.trim().toLowerCase() !== rakazEmail.trim().toLowerCase()) {
+    if (!isAuthorizedEmail(school, rakazEmail)) {
       setError(
         <span>
           אימייל הרכז/ת שהזנת אינו תואם את פרטי בית הספר - בדקי את הכתובת מול הרכז/ת שלך.
@@ -535,7 +535,7 @@ function CoordinatorScreen({ onBack }: { onBack: () => void }) {
         );
         return;
       }
-      if (school.coordinatorEmail.trim().toLowerCase() !== email.trim().toLowerCase()) {
+      if (!isAuthorizedEmail(school, email)) {
         setError(
           <span>
             האימייל אינו תואם את אימייל הרכז/ת שבפרטי בית הספר. אם הפרטים השתנו - עדכני את סטטוס תשפ"ז:{' '}

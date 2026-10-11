@@ -65,7 +65,7 @@ function num(v: string): number | null {
 }
 const isYes = (v: string) => /כן|יש|מתקיים|נותן|הציג/.test(v || '');
 
-function toSchool(row: string[], semel: string): SchoolStatus {
+function toSchool(row: string[], semel: string, authorizedEmails: string[]): SchoolStatus {
   const rawName = row[COL.school] || '';
   const hoursByGrade: Record<number, number> = {};
   ([[7, COL.h7], [8, COL.h8], [9, COL.h9]] as const).forEach(([g, c]) => {
@@ -77,6 +77,7 @@ function toSchool(row: string[], semel: string): SchoolStatus {
     schoolName: rawName.replace(/[_\-\s]*\d{4,}\s*$/, '').replace(/_/g, ' ').trim() || rawName,
     coordinatorName: `${row[COL.coordFirst] || ''} ${row[COL.coordLast] || ''}`.trim(),
     coordinatorEmail: (row[COL.coordEmail] || '').trim(),
+    authorizedEmails,
     hoursByGrade,
     hasLab: row[COL.lab] ? isYes(row[COL.lab]) : undefined,
     schoolFair: row[COL.schoolFair] ? isYes(row[COL.schoolFair]) : undefined,
@@ -85,19 +86,44 @@ function toSchool(row: string[], semel: string): SchoolStatus {
   };
 }
 
-/** שולף פרטי בית ספר לפי סמל מוסד - חי מהסטטוס. נפילה לדמו אם הקריאה נכשלת. */
+/** האם יש בשורה נתוני שעות - כלומר זו הגשת סטטוס אמיתית ולא שורת אימות בלבד. */
+function hasHours(row: string[]): boolean {
+  return [COL.h7, COL.h8, COL.h9].some((c) => num(row[c] || '') != null);
+}
+
+/** שולף פרטי בית ספר לפי סמל מוסד - חי מהסטטוס. מחזיר null אם הקריאה נכשלת. */
 export async function fetchSchool(semel: string): Promise<SchoolStatus | null> {
   const s = String(semel).replace(/\D/g, '');
   if (!s) return null;
   try {
     const rows = await getRows();
-    // אם הרכז/ת הגישו את הטופס יותר מפעם אחת, יש כמה שורות לאותו סמל מוסד.
-    // לוקחים את ה*אחרונה* - ההגשה העדכנית ביותר - כדי לשקף שינויים בסטטוס.
+    // לאותו סמל מוסד יכולות להיות כמה שורות: הגשות חוזרות של הסטטוס, וגם שורות
+    // שנוספו רק כדי לאפשר כניסה לאדם נוסף בבית הספר (מנהלת אשכול, רכזת נוספת).
     const matches = rows.slice(1).filter((r) => (r[COL.school] || '').replace(/\D/g, '').includes(s));
-    const row = matches.length ? matches[matches.length - 1] : undefined;
-    return row ? toSchool(row, s) : null;
+    if (!matches.length) return null;
+    // פרטי בית הספר נלקחים מההגשה העדכנית ביותר שיש בה שעות - כך ששורת אימות
+    // בלי שעות לא מוחקת את נתוני בית הספר ולא הופכת לרכז/ת הראשי/ת.
+    const withHours = matches.filter(hasHours);
+    const dataRows = withHours.length ? withHours : matches;
+    const base = dataRows[dataRows.length - 1];
+    // כל הכתובות של בית הספר מאפשרות כניסה - מכל השורות, כולל שורות האימות.
+    const emails = matches
+      .map((r) => (r[COL.coordEmail] || '').trim())
+      .filter(Boolean)
+      .filter((e, i, a) => a.findIndex((x) => x.toLowerCase() === e.toLowerCase()) === i);
+    return toSchool(base, s, emails);
   } catch {
     // כשל בקריאת הסטטוס החי - מחזירים null (לא נתוני דמו מזויפים). המורה תתבקש לנסות שוב.
     return null;
   }
+}
+
+/** האם הכתובת שהוזנה מאושרת לבית הספר הזה (הרכז/ת או כל מי שנוסף/ה בסטטוס). */
+export function isAuthorizedEmail(school: SchoolStatus, email: string): boolean {
+  const e = email.trim().toLowerCase();
+  if (!e) return false;
+  const list = school.authorizedEmails?.length
+    ? school.authorizedEmails
+    : [school.coordinatorEmail];
+  return list.some((x) => (x || '').trim().toLowerCase() === e);
 }
